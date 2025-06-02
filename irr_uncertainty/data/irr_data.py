@@ -173,7 +173,7 @@ def cams_data_pvlib(lat, lon, alt, start, end, cams_folder=DATA_PATH / "cams_dat
         data_all = pd.read_pickle(pkl_file)
 
     else:
-        data, metadata = get_cams(lat, lon, start, end, email="mathalex38@gmail.com", altitude=alt,
+        data, metadata = get_cams(lat, lon, start, end, email=Config().cams(), altitude=alt,
                                   identifier="cams_radiation", timeout=60 * 5)
         data = data.tz_convert('CET')
         data_all = data[["ghi", "bhi", "dhi", "dni"]]
