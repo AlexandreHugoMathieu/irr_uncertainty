@@ -32,6 +32,8 @@ data/irr_data/images/*.png
 data/irr_limits/*_H_*.pkl
 data/irr_limits/*_1min_*.pkl
 
+# CAMS data
+data/cams_data/*.pkl
 
 # PV live data
 data/pv_live/*.pkl
