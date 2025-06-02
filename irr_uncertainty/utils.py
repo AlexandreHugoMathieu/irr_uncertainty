@@ -58,8 +58,10 @@ def q_plot(data: pd.DataFrame, quantiles=[0.1, 0.5, 0.95], figsize=(8, 5), color
     for i, lh in enumerate(leg.legendHandles):
         if tweak:
             lh.set_alpha(1 - (i) / (len(quantiles) + 1))
+            lh.set_color(color)
         else:
             lh.set_alpha(1 - (i + 1) / (len(quantiles) + 1))
+            lh.set_color(color)
     plt.tight_layout()
 
     return ax
@@ -573,4 +575,4 @@ if __name__ == "__main__":
     for n in data.columns:
         data[n] = 5 + np.sin(t / 10) + 1 * np.random.randn(len(t))
 
-    ax = q_plot(data)
+    ax = q_plot(data, color="red")
