@@ -14,12 +14,12 @@ from PyAstronomy import pyasl
 from scipy.stats import gaussian_kde
 from typing import Union
 
-from irradiance_uncertainty.config import Config, DATA_PATH
-from irradiance_uncertainty.data.irr_data import load_bsrn_data
-from irradiance_uncertainty.models.irr_limits import get_irr_limits, get_poa_limits, poa_limit_adj
-from irradiance_uncertainty.models.optic_model import erbs_AM
-from irradiance_uncertainty.models.uncertainty_config import euro_stations, START_BSRN, END_BSRN
-from irradiance_uncertainty.utils import bestdistfit, dist_transfo, poly_func
+from irr_uncertainty.config import Config, DATA_PATH
+from irr_uncertainty.data.irr_data import load_bsrn_data
+from irr_uncertainty.models.irr_limits import get_irr_limits, get_poa_limits, poa_limit_adj
+from irr_uncertainty.models.optic_model import erbs_AM
+from irr_uncertainty.models.uncertainty_config import euro_stations, START_BSRN, END_BSRN
+from irr_uncertainty.utils import bestdistfit, dist_transfo, poly_func
 
 image_folder = DATA_PATH / "images" / "irr_uncertainty"
 

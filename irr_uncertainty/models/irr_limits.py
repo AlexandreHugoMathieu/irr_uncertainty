@@ -7,8 +7,8 @@ from typing import Union
 from pathlib import Path
 from pvlib.irradiance import aoi, get_extra_radiation, get_total_irradiance
 
-from irradiance_uncertainty.config import DATA_PATH
-from irradiance_uncertainty.data.solar_data import get_solar_position_1m
+from irr_uncertainty.config import DATA_PATH
+from irr_uncertainty.data.solar_data import get_solar_position_1m
 
 
 def get_irr_limits(index_H: pd.DatetimeIndex,

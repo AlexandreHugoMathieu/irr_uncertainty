@@ -18,11 +18,11 @@ from pvlib.irradiance import dni, get_extra_radiation, clearness_index, aoi
 from pvlib.location import Location
 from pvlib.iotools import get_pvgis_hourly
 
-from irradiance_uncertainty.config import DATA_PATH, Config
-from irradiance_uncertainty.data.solar_data import get_filter_v2, bsrn_lat_long_alt, pvlive_lat_long_alt, solarpos, \
+from irr_uncertainty.config import DATA_PATH, Config
+from irr_uncertainty.data.solar_data import get_filter_v2, bsrn_lat_long_alt, pvlive_lat_long_alt, solarpos, \
     get_solar_position_1m
-from irradiance_uncertainty.models.irr_limits import get_irr_limits
-from irradiance_uncertainty.models.optic_model import erbs_AM
+from irr_uncertainty.models.irr_limits import get_irr_limits
+from irr_uncertainty.models.optic_model import erbs_AM
 
 PVLIVE_BASE_URL = 'https://zenodo.org/record/7311989/files/'
 

@@ -2,8 +2,8 @@
 # Created by A. MATHIEU at 14/02/2024
 import pandas as pd
 
-from irradiance_uncertainty.config import DATA_PATH
-from irradiance_uncertainty.data.solar_data import stations_bsrn, bsrn_lat_long_alt
+from irr_uncertainty.config import DATA_PATH
+from irr_uncertainty.data.solar_data import stations_bsrn, bsrn_lat_long_alt
 
 UNCERT_PATH = DATA_PATH / "uncertainty"
 

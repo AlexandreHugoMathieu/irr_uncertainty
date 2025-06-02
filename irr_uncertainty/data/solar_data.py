@@ -10,7 +10,7 @@ from pvlib.location import Location
 from pvlib.irradiance import get_extra_radiation
 from pvlib.tools import cosd
 
-from irradiance_uncertainty.config import DATA_PATH
+from irr_uncertainty.config import DATA_PATH
 
 
 def get_solar_position_1m(index: pd.Index,

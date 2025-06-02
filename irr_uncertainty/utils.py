@@ -10,7 +10,7 @@ import seaborn as sns
 from tqdm import tqdm
 from scipy.optimize import curve_fit
 
-from irradiance_uncertainty.data.irr_data import load_bsrn_data
+from irr_uncertainty.data.irr_data import load_bsrn_data
 
 blue = (40 / 255, 106 / 255, 162 / 255)
 
