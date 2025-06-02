@@ -1,0 +1,46 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment
+/env
+/venv
+
+# Idea folder (Pycharm specific)
+.idea
+
+# Secret file
+secret.ini
+
+# GHI/DHI/BHI map data
+ghi_dhi_bhi_pvgis_2015.csv
+
+## Data files
+# bsrn meta data and hourly data (post-processed)
+solarstations_v2.csv
+data/bsrn_data/*_H_*.pkl
+
+# Irradiance data and local images
+data/irr_data/kd_dist_v2*.pkl
+data/irr_data/images/*.png
+
+# irr_limits (post-processed)
+data/irr_limits/*_H_*.pkl
+data/irr_limits/*_1min_*.pkl
+
+
+# PV live data
+data/pv_live/*.pkl
+
+# solar position data (post-processed)
+data/solar_pos/*_H_*.pkl
+data/solar_pos/*_1m_*.pkl
+data/solar_pos/*_min_*.pkl
+
+# Document files
+docs/build/*
+docs/source/generated/*

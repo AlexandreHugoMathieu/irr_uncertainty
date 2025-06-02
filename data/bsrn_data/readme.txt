@@ -1,0 +1,1 @@
+Folder/recipient to load BSRN data
