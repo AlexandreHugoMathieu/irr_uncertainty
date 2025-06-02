@@ -179,6 +179,8 @@ def cams_data_pvlib(lat, lon, alt, start, end, cams_folder=DATA_PATH / "cams_dat
         data_all = data[["ghi", "bhi", "dhi", "dni"]]
         data_all.to_pickle(pkl_file)
 
+    data_all = data_all.loc[(data_all.index >= start) & (data_all.index < end)]
+
     return data_all
 
 

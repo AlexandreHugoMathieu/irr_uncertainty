@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from pvlib import tools
+from pvlib.irradiance import clearness_index
 
 
 def apply_diffuse(kd, ghi, zenith, max_zenith, datetime_or_doy, kd_error=None):
