@@ -46,3 +46,6 @@ data/solar_pos/*_min_*.pkl
 # Document files
 docs/build/*
 docs/source/generated/*
+
+# Distribution files
+dist/*
