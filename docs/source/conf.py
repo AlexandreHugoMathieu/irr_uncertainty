@@ -5,7 +5,7 @@ import os
 sys.path.insert(0, os.path.abspath('../..'))
 
 # -- General configuration
-project = 'pv_uncertainty'
+project = 'irr_uncertainty'
 copyright = '2025, Alexandre MATHIEU'
 author = 'Alexandre MATHIEU'
 

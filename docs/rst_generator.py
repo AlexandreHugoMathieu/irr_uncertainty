@@ -1,3 +1,4 @@
+"""Generate the document files automatically"""
 # Created by A. MATHIEU & ChatGPT on 26/02/2025
 import os
 import inspect
@@ -63,7 +64,7 @@ def generate_full_rst(directory, output_file="docs/source/content.rst"):
 # Script usage
 if __name__ == "__main__":
     # Directory containing the modules to document
-    directory = "pv_uncertainty"  # Ensure this directory points to your code
+    directory = "irr_uncertainty"  # Ensure this directory points to your code
     modules = find_modules_in_directory(directory)
     module_name = modules[0]
 

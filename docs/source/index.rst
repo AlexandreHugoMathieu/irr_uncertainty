@@ -1,4 +1,4 @@
-pv_uncertainty's documentation
+irr_uncertainty's documentation
 =================================
 
 .. note::
