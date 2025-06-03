@@ -57,6 +57,14 @@ Then, typical intervals are computed with the quantiles as in the Figure below.
 
 ![Illustration quantiles](https://raw.githubusercontent.com/AlexandreHugoMathieu/irr_uncertainty/refs/heads/main/data/irr_data/images/illustration_h_all_quantiles.png)
 
+
+### Mandatory credentials
+
+A secret file "secret.ini" should be placed in the "data/" folder with the credentials for:
+
+- [Soda-pro](https://docs.python.org/3/using/unix.html#getting-and-installing-the-latest-version-of-python): for the CAMS data.
+- [BSRN](https://docs.python.org/3/using/unix.html#getting-and-installing-the-latest-version-of-python) with a email request.
+
 ### Command files
 
 Two command files ease the creation of virtual environment and the execution of jupyter notebooks:
@@ -64,20 +72,9 @@ Two command files ease the creation of virtual environment and the execution of 
 - create_env.cmd: Create a virtual environment and installed all the required packages
 - notebook_start.cmd: Create a kernel to link with the virtual environment in order to use within the notebook and open the jupyter notebook
 
-
 ## Setup
 
-Install Python 3.9 [python docs](https://docs.python.org/3/using/unix.html#getting-and-installing-the-latest-version-of-python)
-
-### Virtual Environment and depedenciies
-
-Instructions for setting up a virtual environment can be found in the [python docs](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/)
-
-Once the virtual environment is setup and running, install dependencies by running:
-
-```bash
-pip install -r requirements.txt
-```
+Python 3.9 [python docs](https://docs.python.org/3/using/unix.html#getting-and-installing-the-latest-version-of-python)
 
 
 ## Contact
