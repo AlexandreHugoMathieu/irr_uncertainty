@@ -1,3 +1,4 @@
+"""This module includes the configuration folder-path/credentials """
 import os
 import configparser
 from pathlib import Path
