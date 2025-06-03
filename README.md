@@ -53,7 +53,7 @@ poa_scns_s, _, _, _ = \
 q_95 = poa_scns_s.quantile([0.025, 0.975], axis=1).T
 ```
 
-Then, typical intervals are computed with the quantiles as in the Figure below.
+Then, typical intervals can be computed with the quantiles as in the Figure below.
 
 ![Illustration quantiles](https://raw.githubusercontent.com/AlexandreHugoMathieu/irr_uncertainty/refs/heads/main/data/irr_data/images/illustration_poa_all_quantiles.png)
 

@@ -49,3 +49,5 @@ docs/source/generated/*
 
 # Distribution files
 dist/*
+build/*
+*.egg-info
