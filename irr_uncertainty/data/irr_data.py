@@ -28,6 +28,16 @@ PVLIVE_BASE_URL = 'https://zenodo.org/record/7311989/files/'
 
 
 def ghi_dhi_bhi_pvgis_2015(lat: float, long: float, print=False):
+    """
+    Retrieve or compute GHI, BHI, and DHI solar irradiation values for given coordinates using PVGIS ERA5 data (2015),
+    and store the data locally to speed up future access.
+
+    :param lat: Latitude of the location (float)
+    :param long: Longitude of the location (float)
+    :param print: Whether to print status messages during execution (bool, default False)
+
+    :return: List containing [GHI, BHI, DHI] values for the specified location in 2015
+    """
     filename = DATA_PATH / "ghi_dhi_bhi_pvgis_2015.csv"
 
     if os.path.exists(filename):
@@ -87,9 +97,11 @@ def process_bsrn(station: str,
     :param end: End to fetch data for
     :param username: BSRN username
     :param password: BSRN password
+    :param resample_freq: resampling frequencies
+    :param filtered: Filter in-situ data according to "get_filter_v2"
     :param overwrite: Fetch data even if already locally stored and overwrite pkl file
 
-    :return:
+    :return: In-situ data
     """
     pkl_name = DATA_PATH / "bsrn_data" / f"{station.lower()}_{resample_freq}_{start.strftime('%Y%m%d')}_" \
                                          f"{end.strftime('%Y%m%d')}.pkl"
