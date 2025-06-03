@@ -55,15 +55,15 @@ q_95 = poa_scns_s.quantile([0.025, 0.975], axis=1).T
 
 Then, typical intervals are computed with the quantiles as in the Figure below.
 
-![Illustration quantiles](https://raw.githubusercontent.com/AlexandreHugoMathieu/irr_uncertainty/refs/heads/main/data/irr_data/images/illustration_h_all_quantiles.png)
+![Illustration quantiles](https://raw.githubusercontent.com/AlexandreHugoMathieu/irr_uncertainty/refs/heads/main/data/irr_data/images/illustration_poa_all_quantiles.png)
 
 
 ### Mandatory credentials
 
 A secret file "secret.ini" should be placed in the "data/" folder with the credentials for:
 
-- [Soda-pro](https://docs.python.org/3/using/unix.html#getting-and-installing-the-latest-version-of-python): for the CAMS data.
-- [BSRN](https://docs.python.org/3/using/unix.html#getting-and-installing-the-latest-version-of-python) with a email request.
+- [Soda-pro](https://www.soda-pro.com/help/cams-services/cams-radiation-service/automatic-access): for the CAMS data - to generate 95% interval for any location.
+- [BSRN](https://bsrn.awi.de/data/data-retrieval-via-ftp/) with a email request - to access BSRN station data and recreate the methodology Figures.
 
 ### Command files
 
