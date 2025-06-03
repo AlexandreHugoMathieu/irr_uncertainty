@@ -51,9 +51,7 @@ if __name__ == "__main__":
     test_index = ['cab', 'cnr', 'tor']
 
     ############## BSRN + PV-live MAP ##############
-    world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
     world = gpd.read_file("https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_countries.geojson")
-    df = GeoDataFrame(columns=["lat", "long", "ghi", "dhi", "geometry"])
     i = 0
     step = 0.25
     for lat in tqdm(np.arange(35, 65, step)):

@@ -1,11 +1,13 @@
 """This module includes the configuration folder-path/credentials """
 import os
 import configparser
+
+import irr_uncertainty
 from pathlib import Path
 
-ROOT = Path(os.getcwd())
+ROOT = Path(irr_uncertainty.__path__[0]).parent
 
-DATA_PATH = ROOT / "data"
+DATA_PATH = ROOT / 'data'
 
 
 class Config:
