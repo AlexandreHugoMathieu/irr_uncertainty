@@ -22,26 +22,26 @@ ghi_dhi_bhi_pvgis_2015.csv
 ## Data files
 # bsrn meta data and hourly data (post-processed)
 solarstations_v2.csv
-data/bsrn_data/*_H_*.pkl
+irr_uncertainty/local_data/bsrn_data/*_H_*.pkl
 
 # Irradiance data and local images
-data/irr_data/kd_dist_v2*.pkl
-data/irr_data/images/*.png
+irr_uncertainty/local_data/irr_data/kd_dist_v2*.pkl
+irr_uncertainty/local_data/irr_data/images/*.png
 
 # irr_limits (post-processed)
-data/irr_limits/*_H_*.pkl
-data/irr_limits/*_1min_*.pkl
+irr_uncertainty/local_data/irr_limits/*_H_*.pkl
+irr_uncertainty/local_data/irr_limits/*_1min_*.pkl
 
 # CAMS data
-data/cams_data/*.pkl
+irr_uncertainty/local_data/cams_data/*.pkl
 
 # PV live data
-data/pv_live/*.pkl
+irr_uncertainty/local_data/pv_live/*.pkl
 
 # solar position data (post-processed)
-data/solar_pos/*_H_*.pkl
-data/solar_pos/*_1m_*.pkl
-data/solar_pos/*_min_*.pkl
+irr_uncertainty/local_data/solar_pos/*_H_*.pkl
+irr_uncertainty/local_data/solar_pos/*_1m_*.pkl
+irr_uncertainty/irr_uncertainty/local_data/solar_pos/*_min_*.pkl
 
 # Document files
 docs/build/*
