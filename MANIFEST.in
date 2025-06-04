@@ -1,0 +1,8 @@
+include irr_uncertainty/local_data/bsrn_data/readme.txt
+include irr_uncertainty/local_data/cams_data/readme.txt
+include irr_uncertainty/local_data/irr_data/*
+include irr_uncertainty/local_data/irr_limits/readme.txt
+include irr_uncertainty/local_data/pv_live/readme.txt
+include irr_uncertainty/local_data/solar_pos/readme.txt
+include irr_uncertainty/local_data/readme.txt
+include irr_uncertainty/local_data/secret.ini

@@ -6,7 +6,7 @@ with open('requirements.txt') as f:
 
 setup(
     name='irr_uncertainty',
-    version='1.3',
+    version='1.4',
     packages=find_packages(),
     description='Irradiance uncertainty package',
     long_description=open('README.md').read(),
@@ -16,4 +16,5 @@ setup(
     url='https://github.com/AlexandreHugoMathieu/irr_uncertainty',
     python_requires='>=3.9',
     install_requires=required,
+    include_package_data=True
 )
