@@ -5,9 +5,9 @@ import configparser
 import irr_uncertainty
 from pathlib import Path
 
-ROOT = Path(irr_uncertainty.__path__[0]).parent
+ROOT = Path(irr_uncertainty.__path__[0])
 
-DATA_PATH = ROOT / 'data'
+DATA_PATH = ROOT / 'local_data'
 
 
 class Config:

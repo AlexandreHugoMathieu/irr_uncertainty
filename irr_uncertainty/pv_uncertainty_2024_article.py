@@ -15,16 +15,17 @@ from shapely.geometry import Point
 from tqdm import tqdm
 
 from irr_uncertainty.config import DATA_PATH, Config
-from irr_uncertainty.data.solar_data import stations_pv_live, pvlive_lat_long_alt, bsrn_lat_long_alt, bsrn_name, stations_bsrn
+from irr_uncertainty.data.solar_data import stations_pv_live, pvlive_lat_long_alt, bsrn_lat_long_alt, bsrn_name, \
+    stations_bsrn
 from irr_uncertainty.data.irr_data import ghi_dhi_bhi_pvgis_2015, load_bsrn_data, load_pvlive_data
 from irr_uncertainty.models.optic_model import erbs_simple
 from irr_uncertainty.models.uncertainty_config import euro_stations
 from irr_uncertainty.models.uncertainty_model import get_kd_dist_v2, irrh_scenarios, transpo_scenarios
-from irr_uncertainty.utils import blue, q_plot, collect_quantiles, collect_quantiles_pv_live, bar_poster
+from irr_uncertainty.utils import blue, q_plot, collect_quantiles, collect_quantiles_pv_live, bar_poster, plot_kt_kt, \
+    calculate_kt_kpis
 
 irr_folder = DATA_PATH / "irr_data"
 image_folder = DATA_PATH / "irr_data" / "images"
-
 
 # Arbitrary selected based on missing data
 YEARS = {"bud": [2020, 2021, 2022],
@@ -46,12 +47,14 @@ if __name__ == "__main__":
     plot_bool = False
     user, password = Config().bsrn()
 
-    # Seperate the BSRN dataset into train and test set
+    # Separate the BSRN dataset into train and test set
     train_index = ['bud', 'cam', 'car', 'lin', 'pal', 'pay']
     test_index = ['cab', 'cnr', 'tor']
 
     ############## BSRN + PV-live MAP ##############
     world = gpd.read_file("https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_countries.geojson")
+
+    df = pd.DataFrame(columns=["lat", "long", "ghi", "dhi", "geometry"])
     i = 0
     step = 0.25
     for lat in tqdm(np.arange(35, 65, step)):
@@ -218,10 +221,10 @@ if __name__ == "__main__":
         solar_position = solar_position.loc[filter[filter].index[0]:filter[filter].index[-1]]
 
         ghi_scns, dhi_scns, bhi_scns = irrh_scenarios(lat, long, alt,
-                                                         solar_position, sat_data["ghi"],
-                                                         factor_kt=1.3,
-                                                         factor_kd=1.3,
-                                                         n_scenarios=n_scenarios)
+                                                      solar_position, sat_data["ghi"],
+                                                      factor_kt=1.3,
+                                                      factor_kd=1.3,
+                                                      n_scenarios=n_scenarios)
 
         quantiles_g = ghi_scns.loc[filter].quantile([0.025, 0.125, 0.25, 0.375, 0.625, 0.75, 0.875, 0.975], axis=1).T
         quantiles_b = bhi_scns.loc[filter].quantile([0.025, 0.125, 0.25, 0.375, 0.625, 0.75, 0.875, 0.975], axis=1).T
@@ -358,7 +361,7 @@ if __name__ == "__main__":
     station = "pal"
     start_2 = pd.to_datetime("20220812").tz_localize("CET")
     end_2 = pd.to_datetime("20220816").tz_localize("CET")
-    sat_data, insitu_data, solar_position = load_bsrn_data(start, end, station, user, password)
+    sat_data, insitu_data, solar_position = load_bsrn_data(START_BSRN, END_BSRN, station, user, password)
     sat_data = sat_data.loc[start_2: end_2].copy()
     insitu_data = insitu_data.loc[start_2: end_2].copy()
     solar_position = solar_position.loc[start_2: end_2].copy()
@@ -366,10 +369,10 @@ if __name__ == "__main__":
     n_scenarios = 1000
     lat, long, alt = bsrn_lat_long_alt(station)
     ghi_scns, dhi_scns, bhi_scns = irrh_scenarios(lat, long, alt,
-                                                     solar_position, sat_data["ghi"],
-                                                     factor_kt=1.35,
-                                                     factor_kd=1.3,
-                                                     n_scenarios=n_scenarios)
+                                                  solar_position, sat_data["ghi"],
+                                                  factor_kt=1.35,
+                                                  factor_kd=1.3,
+                                                  n_scenarios=n_scenarios)
     if plot_bool:
         # GHI, BHI, DHI, POAgrd
         quantiles = [0.5, 0.95]
@@ -439,14 +442,14 @@ if __name__ == "__main__":
 
         # Generate Monte Carlo simulations
         ghi_scns, dhi_scns, bhi_scns = irrh_scenarios(lat, long, alt,
-                                                         solar_position, sat_data["ghi"],
-                                                         factor_kt=factor_kt,
-                                                         factor_kd=factor_kd,
-                                                         kt_mu=kt_mu,
-                                                         params_kt_less15=params_kt_less15,
-                                                         params_kt_over15=params_kt_over15,
-                                                         sat_source="cams_pvlib",
-                                                         n_scenarios=n_scenarios)
+                                                      solar_position, sat_data["ghi"],
+                                                      factor_kt=factor_kt,
+                                                      factor_kd=factor_kd,
+                                                      kt_mu=kt_mu,
+                                                      params_kt_less15=params_kt_less15,
+                                                      params_kt_over15=params_kt_over15,
+                                                      sat_source="cams_pvlib",
+                                                      n_scenarios=n_scenarios)
 
         poa_scns_s, _, _, _ = \
             transpo_scenarios(tilt, 180, lat, long, alt, solar_position, ghi_scns, dhi_scns, n_scenarios=n_scenarios)
@@ -490,19 +493,19 @@ if __name__ == "__main__":
     end = pd.to_datetime("20220626").tz_localize("CET")
 
     lat, long, alt = pvlive_lat_long_alt(station)
-    sat_data, insitu_h, insitu_s, insitu_e, insitu_w, solar_position = load_pvlive_data(station=station, start=start,
-                                                                                        end=end)
+    sat_data, insitu_h, insitu_s, insitu_e, insitu_w, solar_position = \
+        load_pvlive_data(station=station, start=start, end=end)
 
     # Generate Monte Carlo simulations
     ghi_scns, dhi_scns, bhi_scns = irrh_scenarios(lat, long, alt,
-                                                     solar_position, sat_data["ghi"],
-                                                     factor_kt=factor_kt,
-                                                     factor_kd=factor_kd,
-                                                     kt_mu=kt_mu,
-                                                     params_kt_less15=params_kt_less15,
-                                                     params_kt_over15=params_kt_over15,
-                                                     sat_source="cams_pvlib",
-                                                     n_scenarios=n_scenarios)
+                                                  solar_position, sat_data["ghi"],
+                                                  factor_kt=factor_kt,
+                                                  factor_kd=factor_kd,
+                                                  kt_mu=kt_mu,
+                                                  params_kt_less15=params_kt_less15,
+                                                  params_kt_over15=params_kt_over15,
+                                                  sat_source="cams_pvlib",
+                                                  n_scenarios=n_scenarios)
 
     poa_scns_s, _, _, _ = \
         transpo_scenarios(tilt, 180, lat, long, alt, solar_position, ghi_scns, dhi_scns, n_scenarios=n_scenarios)
@@ -557,5 +560,3 @@ if __name__ == "__main__":
 
         plt.tight_layout()
         plt.savefig(image_folder / f"station_{station}_all_quantiles.png")
-
-
