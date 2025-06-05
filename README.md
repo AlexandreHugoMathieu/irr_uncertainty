@@ -60,10 +60,21 @@ Then, typical intervals can be computed with the quantiles as in the Figure belo
 
 ### Mandatory credentials
 
-A secret file "secret.ini" should be placed in the "data/" folder with the credentials for:
+A secret file "secret.ini" should be placed in the "irr_uncertainty/local_data/" folder with the credentials for:
 
 - [Soda-pro](https://www.soda-pro.com/help/cams-services/cams-radiation-service/automatic-access): for the CAMS data - to generate 95% interval for any location.
 - [BSRN](https://bsrn.awi.de/data/data-retrieval-via-ftp/) with a email request - to access BSRN station data and recreate the methodology Figures.
+
+The "secret.ini" should have this format (replacing "your_user_bsrn", "your_password_bsrn", "your_user_cams"):
+
+```
+[BSRN]
+user = your_user_bsrn
+password = your_password_bsrn
+
+[CAMS]
+user = your_user_cams
+```
 
 ### Command files
 
