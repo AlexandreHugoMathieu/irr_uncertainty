@@ -6,7 +6,7 @@ The intervals are generated with the basis of satellite (CAMS) data.
 
 ## Package
 
-This repo can be used as a package by running the following commands.
+This repo can be used with Python 3.9 [python docs](https://docs.python.org/3/using/unix.html#getting-and-installing-the-latest-version-of-python) as a package by running the following commands.
 
 ```bash
 pip install irr_uncertainty
@@ -71,11 +71,6 @@ Two command files ease the creation of virtual environment and the execution of 
 
 - create_env.cmd: Create a virtual environment and installed all the required packages
 - notebook_start.cmd: Create a kernel to link with the virtual environment in order to use within the notebook and open the jupyter notebook
-
-## Setup
-
-Python 3.9 [python docs](https://docs.python.org/3/using/unix.html#getting-and-installing-the-latest-version-of-python)
-
 
 ## Contact
 
