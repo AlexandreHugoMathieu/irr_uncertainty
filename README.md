@@ -56,7 +56,7 @@ axes[0] = q_plot(ghi_scns.loc[:], color="blue", ax=axes[0], label="GHI")
 axes[1] = q_plot(poa_scns_s.loc[:], color="seagreen", ax=axes[1], label="POA-south")
 ```
 
-Then, typical intervals can be computed with the quantiles as in the Figure below.
+Then, typical intervals can be computed by following the notebook "notebooks/irr_interval_generation_example.ipynb" with more details as in the Figure below.
 
 ![Illustration quantiles](https://raw.githubusercontent.com/AlexandreHugoMathieu/irr_uncertainty/refs/heads/main/irr_uncertainty/local_data/irr_data/images/illustration_poa_all_quantiles.png)
 
