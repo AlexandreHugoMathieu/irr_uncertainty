@@ -32,25 +32,28 @@ lat = 45.16
 long = 5.72
 alt = 212
 
-# Installation plan
+# Installation's orientation
 tilt = 25
 azimuth = 180
 
 # Fetch CAMS data and get hourly solar position (with same convention)
 sat_data = cams_data_pvlib(lat, long, alt, start, end)
-solar_position = solarpos(sat_data.index, lat, long, alt).shift(-1)  
+solar_position = solarpos(sat_data.index, lat, long, alt).shift(-1)
 
 # Compute Monte Carlo simulations for horizontal plans
 ghi_scns, dhi_scns, bhi_scns = irrh_scenarios(lat, long, alt, solar_position, sat_data["ghi"],
                                               n_scenarios=n_scenarios)
-											  
 
-# Generate Monte Carlo simulations for tilted plans
+# Generate Monte Carlo simulations for one orientation
 poa_scns_s, _, _, _ = \
     transpo_scenarios(tilt, azimuth, lat, long, alt, solar_position, ghi_scns, dhi_scns, n_scenarios=n_scenarios)
 
-# Compute 95% interval bounds
-q_95 = poa_scns_s.quantile([0.025, 0.975], axis=1).T
+# Plot GHI and POA intervals
+import matplotlib.pyplot as plt
+from irr_uncertainty.utils import q_plot
+fig, axes = plt.subplots(2, 1, figsize=(8, 5), sharex=True, sharey=True)
+axes[0] = q_plot(ghi_scns.loc[:], color="blue", ax=axes[0], label="GHI")
+axes[1] = q_plot(poa_scns_s.loc[:], color="seagreen", ax=axes[1], label="POA-south")
 ```
 
 Then, typical intervals can be computed with the quantiles as in the Figure below.
