@@ -55,7 +55,7 @@ q_95 = poa_scns_s.quantile([0.025, 0.975], axis=1).T
 
 Then, typical intervals can be computed with the quantiles as in the Figure below.
 
-![Illustration quantiles](https://raw.githubusercontent.com/AlexandreHugoMathieu/irr_uncertainty/refs/heads/main/data/irr_data/images/illustration_poa_all_quantiles.png)
+![Illustration quantiles](https://raw.githubusercontent.com/AlexandreHugoMathieu/irr_uncertainty/refs/heads/main/irr_uncertainty/local_data/irr_data/images/illustration_poa_all_quantiles.png)
 
 
 ### Mandatory credentials
