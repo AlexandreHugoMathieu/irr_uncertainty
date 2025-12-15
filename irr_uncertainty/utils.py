@@ -55,7 +55,7 @@ def q_plot(data: pd.DataFrame, quantiles=[0.1, 0.5, 0.95], figsize=(8, 5), color
             ax.plot(qs.index, qs[q2], alpha=alpha, color=color)
 
     leg = ax.legend()
-    for i, lh in enumerate(leg.legendHandles):
+    for i, lh in enumerate(leg.legend_handles):
         if tweak:
             lh.set_alpha(1 - (i) / (len(quantiles) + 1))
             lh.set_color(color)
