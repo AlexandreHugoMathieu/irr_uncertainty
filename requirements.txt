@@ -2,7 +2,7 @@ scikit-learn
 global_land_mask
 fiona~=1.9.6
 geopandas~=0.13.2
-matplotlib~=3.4.1
+matplotlib==3.4.1
 notebook~=7.3.2
 openpyxl~=3.1.2
 seaborn>=0.13.2
