@@ -16,7 +16,7 @@ blue = (40 / 255, 106 / 255, 162 / 255)
 
 
 def q_plot(data: pd.DataFrame, quantiles=[0.1, 0.5, 0.95], figsize=(8, 5), color="b", ax=None, line=False, label="",
-           tweak=False):
+           alpha_offset=0):
     """
     Plots quantile intervals as shaded regions over time for a given DataFrame.
 
@@ -31,7 +31,7 @@ def q_plot(data: pd.DataFrame, quantiles=[0.1, 0.5, 0.95], figsize=(8, 5), color
     :param ax: Matplotlib Axes object. If None, a new figure and axes are created. Default is None.
     :param line: Boolean flag to plot boundary lines for each quantile interval. Default is False.
     :param label: Label prefix for each quantile interval in the legend. Default is an empty string.
-    :param tweak: Boolean flag to adjust alpha levels in the legend for better visibility. Default is False.
+    :param alpha_offset: Adjust alpha levels with an offset in the legend for better visibility. Default is 0.
 
     :return: Matplotlib Axes object with the quantile plot.
     """
@@ -56,11 +56,9 @@ def q_plot(data: pd.DataFrame, quantiles=[0.1, 0.5, 0.95], figsize=(8, 5), color
 
     leg = ax.legend()
     for i, lh in enumerate(leg.legendHandles):
-        if tweak:
-            lh.set_alpha(1 - (i) / (len(quantiles) + 1))
-            lh.set_color(color)
-        else:
-            lh.set_alpha(1 - (i + 1) / (len(quantiles) + 1))
+        if i > (alpha_offset - 1):
+            offset = alpha * (i - alpha_offset)
+            lh.set_alpha(1 - offset)
             lh.set_color(color)
     plt.tight_layout()
 
