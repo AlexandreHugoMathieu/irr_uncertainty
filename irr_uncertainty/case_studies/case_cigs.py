@@ -33,6 +33,7 @@ poa_qs = poa_scns(lat, long, alt, 25, 180, sat_data["ghi"], quantiles=[0.025, 0.
 data_cigs = CIGS_data(start, end)
 
 factor = poa_qs[0.5].max() / data_cigs['Gi'].max()
+# factor=1
 poa_insitu = (data_cigs['Gi'].tz_convert("CET")*factor)
 #
 # poa_qs.tz_convert("CET").plot()

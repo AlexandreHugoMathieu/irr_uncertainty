@@ -22,6 +22,9 @@ def get_idr_path(elev, indice, light=False, sat_source="cams_pvlib"):
     path = DATA_PATH / "idr_objects" / f"{indice}_idrless{elev}_light{light}_{sat_source}.npz"
     return path
 
+def get_kpoaidr_path(aoi, elev,  light=False, sat_source="cams_pvlib"):
+    path = DATA_PATH / "idr_objects" / f"kpoa_idrless{elev}_aoi{aoi}_light{light}_{sat_source}.npz"
+    return path
 
 def npz_idr_save(fitted_idr, path):
     np.savez_compressed(path,
@@ -287,9 +290,10 @@ def kb_idr_fit(
 
 def kpoa_idr_fit(
         overwrite=False,
-        train_index=list(stations_pv_live().index)[:int(0.25 * len(list(stations_pv_live().index)))],
+        train_index=list(stations_pv_live().index)[:int(0.75 * len(list(stations_pv_live().index)))],
         sat_source="cams_pvlib",
         aoi_step: int = 5,
+        elev_step: int = 5,
         light=False):
     """
     Computes and stores the fitted kpoa-Isotonic Distribution Regression.
@@ -307,20 +311,22 @@ def kpoa_idr_fit(
     """
 
     aois = np.arange(0, 180, aoi_step)
-    paths = {aoi_i: get_idr_path(aoi_i, "kpoa", light, sat_source) for aoi_i in aois}
+    elevs = np.arange(0, 90, elev_step)
+    paths = {elev: {aoi_i: get_kpoaidr_path(aoi_i, elev, light, sat_source) for aoi_i in aois} for elev in elevs}
 
     if (not any([os.path.exists(str(path)) for _, path in paths.items()])) or overwrite:
 
-        kpoa_sats = {aoi_i: np.array([]) for aoi_i in aois}
-        kpoa_insitus = {aoi_i: np.array([]) for aoi_i in aois}
-
+        kpoa_sats = {elev: {aoi_i: np.array([]) for aoi_i in aois} for elev in elevs}
+        kpoa_insitus = {elev: {aoi_i: np.array([]) for aoi_i in aois} for elev in elevs}
         train_index_tmp = train_index[:(int(len(train_index) / 2))] if light else train_index
 
         for i, station in tqdm(enumerate(train_index_tmp), total=len(train_index_tmp),
                                desc="Collecting station data for kpoa-IDR fitting process"):
 
+            lat, lon, alt = pvlive_lat_long_alt(station)
             sat_data, insitu_h, insitu_s, insitu_e, insitu_w, solar_position = \
                 load_pvlive_data(station=station, sat_source=sat_source)
+            _, _, _, elevation = get_kt(sat_data["ghi"], lat, lon, alt, return_ghiextra_elev=True)
 
             ghi_sat = sat_data["ghi"]
             ghi_insitu = insitu_h["Gg_pyr"]
@@ -328,18 +334,39 @@ def kpoa_idr_fit(
             # Positive filters
             filter = (ghi_insitu > 0) & (ghi_sat > 0)
 
-            for aoi_i in aois:
-                for orientation, df in {"e": insitu_e, "s": insitu_s, "w": insitu_w}.items():
-                    index_sat = ghi_sat[filter].index
-                    index_insitu = df[(df["aoi"] >= aoi_i) & (df["aoi"] < aoi_i + aoi_step)].dropna().index
-                    index_filter = index_sat.intersection(index_insitu)
+            for elev in elevs:
+                for aoi_i in aois:
+                    for orientation, df in {"e": insitu_e, "s": insitu_s, "w": insitu_w}.items():
+                        filter_elev = filter & (elevation >= elev) & (elevation < (elev + elev_step))
+                        index_sat = ghi_sat[filter_elev].index
+                        index_insitu = df[(df["aoi"] >= aoi_i) & (df["aoi"] < aoi_i + aoi_step)].dropna().index
+                        index_filter = index_sat.intersection(index_insitu)
 
-                    kpoa_sats[aoi_i] = np.append(kpoa_sats[aoi_i],
-                                                 sat_data.loc[index_filter, f"kpoa_{orientation}"].values)
-                    kpoa_insitus[aoi_i] = np.append(kpoa_insitus[aoi_i], df.loc[index_filter, "kpoa"].values)
+                        kpoa_sats[elev][aoi_i] = np.append(kpoa_sats[elev][aoi_i],
+                                                           sat_data.loc[index_filter, f"kpoa_{orientation}"].values)
+                        kpoa_insitus[elev][aoi_i] = np.append(kpoa_insitus[elev][aoi_i],
+                                                              df.loc[index_filter, "kpoa"].values)
 
-        _ = idrs_fit(aois, kpoa_sats, kpoa_insitus, paths, k_indice="kpoa")
-        _ = extend_idr_fit(aois, kpoa_sats, paths)
+        for elev in elevs:
+            kpoa_sats_elev = kpoa_sats[elev]
+            kpoa_insitus_elev = kpoa_insitus[elev]
+            paths_elev = paths[elev]
+            _ = idrs_fit(aois, kpoa_sats_elev, kpoa_insitus_elev, paths_elev, k_indice=f"kpoa_{round(elev)}")
+            _ = extend_idr_fit(aois, kpoa_sats_elev, paths_elev)
+
+        for aoi_i, path  in paths[0].items():
+            if not os.path.exists(paths[0][aoi_i]):
+                if  os.path.exists(paths[5][aoi_i]):
+                    fitted_idr = npz_idr_load(paths[5][aoi_i])
+                    _ = npz_idr_save(fitted_idr, path)
+
+        for elev in elevs:
+            if elev>0:
+                for aoi_i, path  in paths[elev].items():
+                    if not os.path.exists(paths[elev][aoi_i]):
+                        if  os.path.exists(paths[int(elev-5)][aoi_i]):
+                            fitted_idr = npz_idr_load(paths[int(elev-5)][aoi_i])
+                            _ = npz_idr_save(fitted_idr, path)
 
     return None
 
@@ -400,18 +427,18 @@ def aoi_dicts(all_aois, aoi_step):
     return aoi_bool
 
 
-def idr_fc(cases, case_step, cases_bool, case_ts, path_cases, ts, quantiles, k_indice: str):
+def idr_fc(elevs, elev_step, elev_bool, elevation, path_elevs, kt_ts, quantiles, k_indice: str):
     # disable garbage collector (to go faster)
     gc.disable()
     fc_array_list = []
-    for case in tqdm(cases, desc=f"{k_indice} IDR inference"):
-        if cases_bool[case]:
+    for elev in tqdm(elevs, desc=f"{k_indice} IDR inference"):
+        if elev_bool[elev]:
             # Filter on the cases
-            filter = (case_ts >= case) & (case_ts < (case + case_step))
-            ts_filter = ts.loc[filter]
+            filter = (elevation >= elev) & (elevation < (elev + elev_step))
+            ts_filter = kt_ts.loc[filter]
 
             # Import and predict the IDR
-            path = path_cases[case]
+            path = path_elevs[elev]
             fitted_idr = npz_idr_load(path)
             fcs = fitted_idr.predict(pd.DataFrame(ts_filter.values))
             del fitted_idr  # Remove space
@@ -428,11 +455,49 @@ def idr_fc(cases, case_step, cases_bool, case_ts, path_cases, ts, quantiles, k_i
     # enable garbage collector again
     gc.enable()
 
-    fc_q = pd.concat(fc_array_list)
-    fc_q = fc_q.sort_index()
+    if len(fc_array_list)>0:
+        fc_q = pd.concat(fc_array_list)
+        fc_q = fc_q.sort_index()
+    else:
+        fc_q = pd.DataFrame(columns=quantiles)
 
     return fc_q
 
+def idrpoa_fc(elevs, aois, elev_step, aoi_step, dict_bool, elevation, aoi_ts, paths, kt_ts, quantiles, k_indice: str):
+    # disable garbage collector (to go faster)
+    gc.disable()
+    fc_array_list = []
+    for elev in tqdm(elevs, desc=f"{k_indice} IDR inference"):
+        for aoi_i in aois:
+            if dict_bool[elev][aoi_i]:
+                # Filter on the cases
+                filter = (elevation >= elev) & (elevation < (elev + elev_step))
+                filter = filter & (aoi_ts >= aoi_i) & (aoi_ts < (aoi_i + aoi_step))
+                ts_filter = kt_ts.loc[filter]
+
+                # Import and predict the IDR
+                path = paths[elev][aoi_i]
+                fitted_idr = npz_idr_load(path)
+                fcs = fitted_idr.predict(pd.DataFrame(ts_filter.values))
+                del fitted_idr  # Remove space
+
+                # Compute quantiles point per point
+                fc_array = np.zeros((len(ts_filter.index), len(quantiles)))
+                for i, fc in enumerate(fcs.predictions):
+                    sd = IDRSmooth(data=fc.points)
+                    q_values = sd.ppf(quantiles)
+                    fc_array[i] = q_values
+
+                fc_array_list += [pd.DataFrame(fc_array, index=ts_filter.index, columns=quantiles)]
+
+    # enable garbage collector again
+    gc.enable()
+
+    fc_q = pd.concat(fc_array_list)
+    fc_q = fc_q.sort_index()
+
+
+    return fc_q
 
 def ktq_idr_fc(ghi, lat, lon, alt, quantiles=[0.05, 0.25, 0.5, 0.75, 0.95], elev_step=5, light=False,
                sat_source="cams_pvlib"):
@@ -497,23 +562,38 @@ def kbq_idr_fc(ghi, lat, lon, alt, quantiles=[0.05, 0.25, 0.5, 0.75, 0.95], elev
 
 
 def kpoaq_idr_fc(ghi, lat, lon, alt, tilt, surface_azimuth,
-                 quantiles=[0.05, 0.25, 0.5, 0.75, 0.95], aoi_step=5, light=False,
+                 quantiles=[0.05, 0.25, 0.5, 0.75, 0.95], aoi_step=5, elev_step=5, light=False,
                  sat_source="cams_pvlib"):
     # Fit
-    _ = kpoa_idr_fit(aoi_step=aoi_step, light=light, sat_source=sat_source)
+    # _ = kpoa_idr_fit(aoi_step=aoi_step, elev_step=elev_step, light=light, sat_source=sat_source)
 
     # Compute the reference satellite clearness index
     _, _, _, elevation = get_kt(ghi, lat, lon, alt, return_ghiextra_elev=True)
     kpoa_ts, _, aoi_angle = get_kpoa(ghi.index, lat, lon, alt, tilt, surface_azimuth, ghi=ghi)
     aoi_angle_h = aoi_angle.resample("H").mean().reindex(kpoa_ts.index)
 
-    # Prepare the inputs for forecasting
-    aoi_ts = aoi_angle_h.loc[ghi > 0]
+    # Prepare the inputs for estimating
     kpoa_ts = kpoa_ts.loc[ghi > 0]
+    aoi_ts = aoi_angle_h.loc[ghi > 0]
     aoi_bool = aoi_dicts(aoi_ts, aoi_step)
     aois = list(aoi_bool.keys())
-    path_elevs = {aoi_i: get_idr_path(aoi_i, "kpoa", light, sat_source) for aoi_i in aois}
 
-    kpoa_scns = idr_fc(aois, aoi_step, aoi_bool, aoi_ts, path_elevs, kpoa_ts, quantiles, "kpoa")
+    kpoa_list = []
+    for aoi_i in aois:
+        filter = (ghi > 0) & (aoi_angle_h >= aoi_i) & (aoi_angle_h < aoi_i + aoi_step)
+        all_elevs = elevation.loc[filter]
+        elev_bool = elev_dicts(all_elevs, elev_step)
+        elevs = list(elev_bool.keys())
+        path_elevs = {elev: get_kpoaidr_path(aoi_i, elev, light, sat_source) for elev in elevs}
 
-    return kpoa_scns.clip(lower=0)
+        kpoa_ts_aoi = kpoa_ts.loc[filter]
+
+        kpoa_qs_elev = idr_fc(elevs, elev_step, elev_bool, elevation, path_elevs, kpoa_ts_aoi, quantiles,
+                              f"kpoa_{round(aoi_i, 2)}")
+        kpoa_list += [kpoa_qs_elev]
+
+    kpoa_qs = pd.concat(kpoa_list)
+    kpoa_qs = kpoa_qs.sort_index().reindex(ghi.index).fillna(0).clip(lower=0)
+
+
+    return kpoa_qs
