@@ -4,10 +4,13 @@ import numpy as np
 import pandas as pd
 
 from pvlib import tools
-from pvlib.irradiance import clearness_index
+from pvlib.irradiance import get_extra_radiation, get_total_irradiance, dni
+from pvlib.tools import cosd
+
+from irr_uncertainty.data.solar_data import get_solar_position_1m, get_poaextra
 
 
-def apply_diffuse(kd, ghi, zenith, max_zenith, datetime_or_doy, kd_error=None):
+def apply_diffuse(kd, ghi, zenith, max_zenith):
     """
     Compute the diffuse horizontal irradiance (DHI) and direct normal irradiance (DNI) from
     the diffuse fraction (kd) and global horizontal irradiance (GHI).
@@ -19,32 +22,18 @@ def apply_diffuse(kd, ghi, zenith, max_zenith, datetime_or_doy, kd_error=None):
     :param zenith: Solar zenith angle (degrees).
     :param max_zenith: Maximum allowable zenith angle before DNI is set to 0.
     :param datetime_or_doy (pd.DatetimeIndex): Day of year or datetime index.
-    :param kd_error (pd.Series, optional): additional error for kd. Default is None.
 
     :return:tuple: (DNI, DHI) in W/m².
     """
-    if kd_error is None:
-        dhi = kd * ghi
+    dhi = kd * ghi
 
-        dni = (ghi - dhi) / tools.cosd(zenith)
-        bad_values = (zenith > max_zenith) | (ghi < 0) | (dni < 0)
-        dni = np.where(bad_values, 0, dni)
-        # ensure that closure relationship remains valid
-        dhi = np.where(bad_values, ghi, dhi)
+    dni = (ghi - dhi) / tools.cosd(zenith)
+    bad_values = (zenith > max_zenith) | (ghi < 0) | (dni < 0)
+    dni = np.where(bad_values, 0, dni)
+    # ensure that closure relationship remains valid
+    dhi = np.where(bad_values, ghi, dhi)
 
-        return dni, dhi
-
-    elif type(kd_error) == pd.Series:
-        df = (kd_error + kd).clip(lower=0, upper=1)
-        dhi = df * ghi
-
-        dni = (ghi - dhi) / tools.cosd(zenith)
-        bad_values = (zenith > max_zenith) | (ghi < 0) | (dni < 0)
-        dni = pd.Series(np.where(bad_values, 0, dni), index=datetime_or_doy)
-        # ensure that closure relationship remains valid
-        dhi = pd.Series(np.where(bad_values, ghi, dhi), index=datetime_or_doy)
-
-        return dni, dhi
+    return dni, dhi
 
 
 def erbs_simple(kt):
@@ -69,63 +58,72 @@ def erbs_simple(kt):
     # For Kt > 0.8, set the diffuse fraction
     kd = np.where(kt > 0.8, 0.165, kd)
 
+    if type(kt) is pd.Series:
+        kd = pd.Series(kd, index=kt.index)
+
     return kd
 
 
-def erbs_AM(ghi,
-            zenith,
-            datetime_or_doy,
-            dni_extra,
-            kt: pd.Series = None,
-            kd_error: pd.Series = None,
-            min_cos_zenith=0.065,
-            max_zenith=87):
-    """
-    Estimate DNI and DHI from GHI using the Erbs model.
+def get_kt(ghi, lat, lon, alt, ta=None, p=None, return_ghiextra_elev=False, max_clearness_index=2):
+    """Compute the reference satellite clearness index"""
 
-    This function is adapted from the PVLIB implementation
-    (https://pvlib-python.readthedocs.io/en/latest/_modules/pvlib/irradiance.html#erbs)
-    to allow specifying `dni_extra` as an input.
+    solar_position_1m = get_solar_position_1m(ghi.index, lat, lon, alt, ta=ta, p=p, pkl=True)
+    zenith_1m = solar_position_1m["apparent_zenith"].fillna(solar_position_1m["zenith"])
+    elevation_1m = solar_position_1m["apparent_elevation"].fillna(solar_position_1m["elevation"])
+    dni_extra_1m = get_extra_radiation(solar_position_1m.index)
+    ghi_extra_1m = dni_extra_1m * np.maximum(cosd(zenith_1m), 0)
+    i0h = dni_extra_1m * np.maximum(cosd(zenith_1m), 0.065)
 
-    The Erbs model [1]_ estimates the diffuse fraction (DF) from global
-    horizontal irradiance (GHI) through an empirical relationship between DF
-    and the global clearness index (Kt). The diffuse fraction is used to compute
-    diffuse horizontal irradiance (DHI) as:
+    # Compute kt
+    kt = ghi / i0h.resample("H").mean().reindex(ghi.index)
+    kt = np.maximum(kt, 0)
+    kt_ts = np.minimum(kt, max_clearness_index)
 
-    .. math::
+    if return_ghiextra_elev:
+        # start of time integration
+        dni_extra = dni_extra_1m.resample("H").mean().reindex(ghi.index)
+        ghi_extra = ghi_extra_1m.resample("H").mean().reindex(ghi.index)
+        elevation = elevation_1m.resample("H").mean().reindex(ghi.index)
 
-        DHI = DF \times GHI
+        return kt_ts, ghi_extra, dni_extra, elevation
+    else:
+        return kt_ts
 
-    Direct normal irradiance (DNI) is then estimated as:
 
-    .. math::
+def get_kpoa(times, lat, lon, alt, tilt, surface_azimuth, ta=None, p=None, poa=None, ghi=None):
+    solar_position_1m = get_solar_position_1m(times, lat, lon, alt, ta=ta, p=p, pkl=True)
+    zenith_1m = solar_position_1m["apparent_zenith"].fillna(solar_position_1m["zenith"])
+    dni_extra_1m = get_extra_radiation(solar_position_1m.index)
 
-        DNI = \frac{GHI - DHI}{\cos(Z)}
+    poa_extra, aoi_angle = get_poaextra(times, lat, lon, alt, tilt, surface_azimuth,
+                       solar_position_1m=solar_position_1m,
+                       dni_extra_1m=dni_extra_1m,
+                       ta=ta, p=p, freq="H")
 
-    where \( Z \) is the zenith angle.
+    if poa is None:
+        # Start of time integration (end-of-time convention)
+        dni_extra = dni_extra_1m.resample("H").mean().reindex(times)
+        zenith = zenith_1m.resample("H").mean().reindex(times)
+        azimuth = solar_position_1m["azimuth"].resample("h").mean().reindex(times)
 
-    :param ghi: Global horizontal irradiance in W/m².
-    :param zenith: True (not refraction-corrected) zenith angles in decimal degrees.
-    :param datetime_or_doy: Day of the year (DOY) or array of DOY values (e.g., `pd.DatetimeIndex.dayofyear` or `pd.DatetimeIndex`).
-    :param min_cos_zenith: Minimum value of cos(zenith) to allow when calculating the global clearness index `Kt`. Default is 0.065 (equivalent to a zenith of 86.273°).
-    :param max_zenith: Maximum zenith angle allowed in the DNI calculation. DNI is set to 0 for zenith values greater than `max_zenith`. Default is 87°.
+        # Compute dhi/dni
+        kt = get_kt(ghi, lat, lon, alt, ta=None, p=None)
+        kd = erbs_simple(kt)
+        dhi = kd * ghi
+        dni_ts = dni(ghi, dhi, zenith)
 
-    :return: Tuple containing estimated (DNI, DHI).
+        poa = get_total_irradiance(
+            surface_tilt=tilt,
+            surface_azimuth=surface_azimuth,
+            solar_zenith=zenith,
+            solar_azimuth=azimuth,
+            dni=dni_ts,
+            ghi=ghi,
+            dhi=dhi,
+            dni_extra=dni_extra,
+            model="haydavies"
+        )["poa_global"]
 
-    Reference
-    ---------
-        D. G. Erbs, S. A. Klein, and J. A. Duffie, "Estimation of the diffuse radiation fraction for hourly, daily, and monthly-average global radiation," *Solar Energy*, vol. 28, no. 4, pp. 293-302, 1982.
+    kpoa = (poa / poa_extra)
 
-    """
-
-    if kt is None:
-        kt = clearness_index(ghi.fillna(0), zenith, dni_extra, min_cos_zenith=min_cos_zenith,
-                             max_clearness_index=2)
-    kt.loc[ghi.isna()] = np.nan
-
-    kd = erbs_simple(kt)
-
-    kd = pd.Series(kd, index=datetime_or_doy)
-    dni, dhi = apply_diffuse(kd, ghi, zenith, max_zenith, datetime_or_doy, kd_error)
-
-    return dni, dhi, kt, kd
+    return kpoa, poa_extra, aoi_angle

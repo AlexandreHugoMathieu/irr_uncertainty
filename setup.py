@@ -6,7 +6,7 @@ with open('requirements.txt') as f:
 
 setup(
     name='irr_uncertainty',
-    version='1.6',
+    version='2.0',
     packages=find_packages(),
     description='Irradiance uncertainty package',
     long_description=open('README.md').read(),

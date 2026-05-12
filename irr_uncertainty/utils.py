@@ -14,8 +14,7 @@ from irr_uncertainty.data.irr_data import load_bsrn_data
 
 blue = (40 / 255, 106 / 255, 162 / 255)
 
-
-def q_plot(data: pd.DataFrame, quantiles=[0.1, 0.5, 0.95], figsize=(8, 5), color="b", ax=None, line=False, label="",
+def q_plot(data: pd.DataFrame, q_ranges=[0.05, 0.5, 0.95], figsize=(8, 5), color="b", ax=None, line=False, label="",
            alpha_offset=0):
     """
     Plots quantile intervals as shaded regions over time for a given DataFrame.
@@ -41,12 +40,12 @@ def q_plot(data: pd.DataFrame, quantiles=[0.1, 0.5, 0.95], figsize=(8, 5), color
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
-    alpha = 1 / len(quantiles)
-    for i, q in enumerate(quantiles):
-        q1 = 0.5 - q / 2
-        q2 = 0.5 + q / 2
+    alpha = 1 / len(q_ranges)
+    for i, q in enumerate(q_ranges):
+        q1 = round(0.5 - q / 2,2)
+        q2 = round(0.5 + q / 2,2)
 
-        qs = data.quantile([q1, q2], axis=1).T
+        qs = data[[q1, q2]]
         q_string = f"{label} {int(q * 100)}%-interval"
         ax.fill_between(qs.index, qs[q1], qs[q2], alpha=alpha, color=color, label=q_string)
 
@@ -240,12 +239,6 @@ def plot_kt_kt(std_kt_kt_train, fontsize=11, legend=True, plot_bool=True):
         x_mean = std_kt_kt_train.max(axis=1).dropna().index
         y_mean = std_kt_kt_train.mean(axis=1).dropna().values
 
-        params_poly_3, _ = curve_fit(poly_func, x_mean, y_mean)
-        x_train = std_kt_kt_train.loc[std_kt_kt_train.sum(axis=1) != 0].index
-        y_train = poly_func(x_train, *params_poly_3)
-        y_train_ts = pd.Series(y_train, index=x_train) * 1
-        errors = std_kt_kt_train.sub(y_train_ts, axis=0).values.flatten()
-        # sigma_poly = np.std([er for er in errors if ~np.isnan(er)])
 
         if plot_bool:
             plt.figure(figsize=(6, 5))
@@ -255,10 +248,6 @@ def plot_kt_kt(std_kt_kt_train, fontsize=11, legend=True, plot_bool=True):
             for i, col in enumerate(std_kt_kt_train.columns):
                 std_kt_kt_train[col].plot(label=col, marker=".", color=colors[i])
             plt.plot(x_mean, y_mean, linewidth=0, marker="o", color="black")
-            plt.plot(y_train_ts.index, y_train_ts, linewidth=2.5, color="black",
-                     label="Polynomial fit")
-            plt.plot(y_train_ts.index, y_train_ts * 1.35, linewidth=2.5, color="grey",
-                     label="Polynomial fit +35%")
             # for i, col in enumerate(std_kt_kt_test.columns):
             #     std_kt_kt_test[col].plot(color="blue", marker=markers[i], label=col)
             if legend:
@@ -269,7 +258,8 @@ def plot_kt_kt(std_kt_kt_train, fontsize=11, legend=True, plot_bool=True):
             plt.tight_layout()
             plt.ylim([0, 0.3])
 
-    return params_poly_3
+    return None
+
 
 
 def collect_quantiles(df_25, df_50, df_75, df_95, quantiles_g, quantiles_d, quantiles_b, insitu_data, filter, station,
@@ -572,5 +562,6 @@ if __name__ == "__main__":
 
     for n in data.columns:
         data[n] = 5 + np.sin(t / 10) + 1 * np.random.randn(len(t))
+    data_q = data.quantile([0.05, 0.25, 0.45, 0.55, 0.75, 0.95], axis=1).T
 
-    ax = q_plot(data, color="red")
+    ax = q_plot(data_q, q_ranges=[0.1, 0.5, 0.90], color="red")

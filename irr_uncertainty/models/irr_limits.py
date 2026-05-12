@@ -83,27 +83,27 @@ def get_irr_limits(index_H: pd.DatetimeIndex,
         bhi_limit = pd.DataFrame(index=index_H)
 
         # GHI limits
-        ghi_limit["lower"] = (ghi_toa.resample(resample_freq, label="right").min().reindex(index_H) * 0.03).fillna(0)
+        ghi_limit["lower"] = (ghi_toa.resample(resample_freq).min().reindex(index_H) * 0.03).fillna(0)
         ghi_limit["upper"] = np.array(
-            [(ghi_toa.resample(resample_freq, label="right").max().reindex(index_H) * 1).clip(lower=0) + 100,
-             (1.5 * bni_toa_exp12.resample(resample_freq, label="right").max().reindex(
+            [(ghi_toa.resample(resample_freq).max().reindex(index_H) * 1).clip(lower=0) + 100,
+             (1.5 * bni_toa_exp12.resample(resample_freq).max().reindex(
                  index_H) + 100).fillna(0),
-             (1.2 * bni_toa_exp12.resample(resample_freq, label="right").max().reindex(
+             (1.2 * bni_toa_exp12.resample(resample_freq).max().reindex(
                  index_H) + 50).fillna(0)]).min(0)
 
         # DHI limits
-        dhi_limit["lower"] = (ghi_toa.resample(resample_freq, label="right").min().reindex(index_H) * 0.03).fillna(0)
+        dhi_limit["lower"] = (ghi_toa.resample(resample_freq).min().reindex(index_H) * 0.03).fillna(0)
         dhi_limit["upper"] = np.array(
-            [(bni_toa.resample(resample_freq, label="right").max().reindex(index_H) * 0.8).clip(lower=0) + 50,
-             (0.95 * bni_toa_exp12.resample(resample_freq, label="right").max().reindex(
+            [(bni_toa.resample(resample_freq).max().reindex(index_H) * 0.8).clip(lower=0) + 50,
+             (0.95 * bni_toa_exp12.resample(resample_freq).max().reindex(
                  index_H) + 50).fillna(0),
-             (0.75 * bni_toa_exp12.resample(resample_freq, label="right").max().reindex(
+             (0.75 * bni_toa_exp12.resample(resample_freq).max().reindex(
                  index_H) + 30).fillna(0)]).min(0)
 
         # BHI
         bhi_limit["lower"] = 0
-        bhi_limit["upper"] = np.array([bni_toa_zenith.resample(resample_freq, label="right").max().reindex(index_H),
-                                       bni_toa_exp02_zenith.resample(resample_freq, label="right").max().reindex(
+        bhi_limit["upper"] = np.array([bni_toa_zenith.resample(resample_freq).max().reindex(index_H),
+                                       bni_toa_exp02_zenith.resample(resample_freq).max().reindex(
                                            index_H)]).min(0)
 
         ghi_limit = ghi_limit.shift(0)

@@ -19,12 +19,19 @@ from pvlib.location import Location
 from pvlib.iotools import get_pvgis_hourly
 
 from irr_uncertainty.config import DATA_PATH, Config
-from irr_uncertainty.data.solar_data import get_filter_v2, bsrn_lat_long_alt, pvlive_lat_long_alt, solarpos, \
-    get_solar_position_1m
+from irr_uncertainty.data.solar_data import get_filter_v2, solarpos, get_solar_position_1m
+from irr_uncertainty.data.station_metadata import bsrn_lat_long_alt, pvlive_lat_long_alt
 from irr_uncertainty.models.irr_limits import get_irr_limits
-from irr_uncertainty.models.optic_model import erbs_AM
+from irr_uncertainty.models.optic_model import erbs_simple, get_kt, get_kpoa
 
 PVLIVE_BASE_URL = 'https://zenodo.org/record/7311989/files/'
+
+
+def filter_dates(df, start, end):
+    df = df.loc[((df.index) >= start) & ((df.index) < end)]
+    df = df.sort_index()
+    df = df[~df.index.duplicated()].copy()
+    return df
 
 
 def ghi_dhi_bhi_pvgis_2015(lat: float, long: float, print=False):
@@ -106,6 +113,7 @@ def process_bsrn(station: str,
     pkl_name = DATA_PATH / "bsrn_data" / f"{station.lower()}_{resample_freq}_{start.strftime('%Y%m%d')}_" \
                                          f"{end.strftime('%Y%m%d')}.pkl"
 
+    lat, lon, alt = bsrn_lat_long_alt(station)
     if not overwrite and pkl_name.exists():
         data = pd.read_pickle(pkl_name)
     else:
@@ -124,24 +132,23 @@ def process_bsrn(station: str,
                 if filtered:
                     if (not data_tmp.empty):
                         # Calculate BHI based on solar position from DNI
-                        lat, lon, alt = bsrn_lat_long_alt(station)
-                        site = Location(latitude=lat, longitude=lon, altitude=alt)
-                        solpos_1m = site.get_solarposition(times=data_tmp.index,
-                                                           pressure=data_tmp["pressure"].fillna(10 * 1000),
-                                                           temperature=data_tmp["temp_air"].fillna(25))
+                        solpos_1m = get_solar_position_1m(data_tmp.index, lat, lon, alt, pkl=False)
+                        solpos_1m = solpos_1m.reindex(data_tmp.index)
+
+                        # Compute BHI for filtering purpose
                         cos_z = np.cos(solpos_1m["apparent_zenith"].fillna(solpos_1m["zenith"]) * np.pi / 180)
                         data_tmp["bhi"] = (data_tmp["dni"] * cos_z).clip(lower=0)
 
                         # Apply filters
                         filter = get_filter_v2(data_tmp, solpos_1m)
 
-                        # 85% of the values (Helioclim site)
+                        # 85% of the values (Helioclim convention with start of time integration)
                         data_15min = \
                             data_tmp.loc[filter].resample("15min").mean().loc[
                             data_tmp.loc[filter, "ghi"].resample("15min").count() >= 13, :]
                         ghi_15min = data_15min["ghi"]
 
-                        # 75% of the values (Helioclim site)
+                        # 75% of the values (Helioclim convention with start of time integration)
                         data_H = data_15min.resample("60min").mean().loc[ghi_15min.resample("60min").count() >= 3]
                     else:
                         data_H = data_tmp
@@ -151,15 +158,10 @@ def process_bsrn(station: str,
                 data_H.to_pickle(pkl_tmp)
             else:
                 data_H = pd.read_pickle(pkl_tmp)
-
             data = pd.concat([data, data_H], axis=0)
-
-        if not data.empty:
-            data = data[(data.index >= start) & (data.index < end)]
-
         data.to_pickle(pkl_name)
 
-    data = data[~data.index.duplicated()].copy()
+    data = filter_dates(data, start, end)
 
     return data
 
@@ -185,13 +187,19 @@ def cams_data_pvlib(lat, lon, alt, start, end, cams_folder=DATA_PATH / "cams_dat
         data_all = pd.read_pickle(pkl_file)
 
     else:
-        data, metadata = get_cams(lat, lon, start, end, email=Config().cams(), altitude=alt,
+        data, metadata = get_cams(lat, lon, start, end, altitude=alt, email=Config().cams(),
                                   identifier="cams_radiation", timeout=60 * 5)
+
+        # overwrite label convention with start-of-Time integration
+        obs_period = data['Observation period'].str.split('/')
+        data.index = pd.to_datetime(obs_period.str[0], utc=True)
+
+        # Save only relevant data in local time
         data = data.tz_convert('CET')
         data_all = data[["ghi", "bhi", "dhi", "dni"]]
         data_all.to_pickle(pkl_file)
 
-    data_all = data_all.loc[(data_all.index >= start) & (data_all.index < end)]
+    data_all = filter_dates(data_all, start, end)
 
     return data_all
 
@@ -327,25 +335,20 @@ def load_bsrn_data(start, end, station, user, password, overwrite=False, sat_sou
 
     if sat_source == "cams_pvlib":
         sat_data = cams_data_pvlib(lat, lon, alt, start, end).tz_convert('CET')
-        sat_data["Ta_C"] = 25
 
     # Get BSRN
     insitu_data = process_bsrn(station=station, start=start, end=end, username=user, password=password,
                                resample_freq="H", overwrite=overwrite, filtered=True).tz_convert('CET')
     insitu_data = insitu_data.reindex(sat_data.index)
 
-    # Get hourly solar position and compensate for the end-of time integration included in the function
+    # Get hourly solar position
     p_col = sat_data["pressure_pa"] if "pressure_pa" in sat_data.columns else None
-    solar_position = solarpos(sat_data.index, lat, lon, alt, sat_data["Ta_C"], p_col).shift(-1).ffill(limit=1)  #
+    solar_position = solarpos(sat_data.index, lat, lon, alt, ta=None, p=p_col)
 
-    # included in 'solarpos'
-    zenith = solar_position["apparent_zenith"].fillna(solar_position["zenith"])
-    dni_extra = get_extra_radiation(sat_data.index)
-
-    # Erbs model
-    _, _, _, kd = erbs_AM(sat_data["ghi"], zenith, sat_data.index, dni_extra)
-    sat_data["kt"] = clearness_index(sat_data["ghi"], zenith, dni_extra).clip(lower=0)
-    sat_data["kd"] = kd.clip(lower=0, upper=1)
+    # Indices
+    sat_data["kt"] = get_kt(sat_data["ghi"], lat, lon, alt).clip(lower=0)
+    sat_data["kd"] = erbs_simple(sat_data["kt"]).clip(lower=0, upper=1)
+    sat_data["kb"] = 1 - sat_data["kd"]
 
     # Recalculate the horizontal components according to Erbs model
     sat_data["dhi"] = sat_data["kd"] * sat_data["ghi"]
@@ -355,14 +358,74 @@ def load_bsrn_data(start, end, station, user, password, overwrite=False, sat_sou
     if not insitu_data["ghi"].dropna().empty:
         filter = (insitu_data["ghi"] > 0) & (sat_data["ghi"] > 0)
         insitu_data.loc[filter, "kd"] = (insitu_data.loc[filter, "dhi"] / insitu_data.loc[filter, "ghi"])
-        insitu_data["kt"] = clearness_index(insitu_data.loc[filter, "ghi"], zenith.loc[filter],
-                                            dni_extra.loc[filter]).clip(lower=0)
+        insitu_data["kt"] = get_kt(insitu_data.loc[filter, "ghi"], lat, lon, alt).clip(lower=0)
 
         # Make sure BHI = GHI - DHI
         # (Never really studied in the following parts, since it is kd and kt that are investigated)
         insitu_data["bhi"] = (insitu_data["ghi"] - insitu_data["dhi"]).clip(lower=0)
 
     return sat_data, insitu_data, solar_position
+
+
+def load_bsrn_welev(start, end, station, user, password, sat_source: str = "cams_pvlib"):
+    lat, long, alt = bsrn_lat_long_alt(station)
+    sat_data, insitu_data, solar_position = load_bsrn_data(start, end, station, user, password,
+                                                           sat_source=sat_source)
+    _, _, _, elevation = get_kt(sat_data["ghi"], lat, long, alt, return_ghiextra_elev=True)
+    return sat_data, insitu_data, solar_position, elevation
+
+
+def filter_pyrano_d(insitu, filter_g, aoi_d, column_poag="Gg_si_south"):
+    """Apply filters to pyranos (PV-live specific)"""
+    df_d = insitu[filter_g & (aoi_d < 70) & (insitu[column_poag] > 50)]
+    df_d_15min = df_d.resample("15min").mean()[df_d["flag_Gg_pyr"].resample("15min").count() >= 13]  # 85%
+    insitu_d = df_d_15min.resample("60min").mean()[df_d_15min["flag_Gg_pyr"].resample("60min").count() >= 3]  # 75%
+    return insitu_d
+
+
+def filter_pyrano(insitu, lat, long, alt):
+    # Solar position and physical limits
+    solar_position_1m = get_solar_position_1m(insitu.index, lat, long, alt, None, None, pkl=True)
+    ghi_limit, _, _ = get_irr_limits(insitu.index, lat, long, alt, resample_freq="1min")
+
+    # Calculate angle of incidence/GHI limits for filtering purposes
+    solar_zenith_1m = solar_position_1m["apparent_zenith"].fillna(solar_position_1m["zenith"]).reindex(insitu.index)
+    solar_azimuth_1m = solar_position_1m["azimuth"].reindex(insitu.index)
+    aoi_s = aoi(25, 180, solar_zenith_1m, solar_azimuth_1m).reindex(insitu.index)
+    aoi_e = aoi(25, 90, solar_zenith_1m, solar_azimuth_1m).reindex(insitu.index)
+    aoi_w = aoi(25, 270, solar_zenith_1m, solar_azimuth_1m).reindex(insitu.index)
+
+    # Horizontal has a special filter
+    filter_g = (insitu["Gg_pyr"] > 50) & (insitu["flag_Gg_pyr"] == 0) & (insitu["flag_shading"] == 0)
+    df_g = insitu[filter_g & (insitu["flag_T_pyr"] == 0) & (insitu["Gg_pyr"] > ghi_limit["lower"]) & (
+            insitu["Gg_pyr"] < ghi_limit["upper"])]
+    df_15min = df_g.resample("15min").mean()[df_g["flag_Gg_pyr"].resample("15min").count() >= 13]  # 85%
+    insitu_h = df_15min.resample("60min").mean()[df_15min["flag_Gg_pyr"].resample("60min").count() >= 3]  # 75%
+
+    # Other tilted orientations have the same filter
+    insitu_s = filter_pyrano_d(insitu, filter_g, aoi_s, "Gg_si_south")
+    insitu_e = filter_pyrano_d(insitu, filter_g, aoi_e, "Gg_si_east")
+    insitu_w = filter_pyrano_d(insitu, filter_g, aoi_w, "Gg_si_west")
+
+    return insitu_h, insitu_s, insitu_e, insitu_w
+
+
+def add_kpoa(insitu_s, insitu_e, insitu_w, sat_data, lat, long, alt):
+    insitu_s["kpoa"], insitu_s["poa_extra"], insitu_s["aoi"] = \
+        get_kpoa(insitu_s.index, lat, long, alt, 25, 180, poa=insitu_s["Gg_si_south"])
+    insitu_e["kpoa"], insitu_e["poa_extra"], insitu_e["aoi"] = \
+        get_kpoa(insitu_e.index, lat, long, alt, 25, 90, poa=insitu_e["Gg_si_east"])
+    insitu_w["kpoa"], insitu_w["poa_extra"], insitu_w["aoi"] = \
+        get_kpoa(insitu_w.index, lat, long, alt, 25, 270, poa=insitu_w["Gg_si_west"])
+
+    sat_data["kpoa_s"], sat_data["poa_extra_s"], _ = \
+        get_kpoa(sat_data.index, lat, long, alt, 25, 180, ghi=sat_data["ghi"])
+    sat_data["kpoa_e"], sat_data["poa_extra_e"], _ = \
+        get_kpoa(sat_data.index, lat, long, alt, 25, 90, ghi=sat_data["ghi"])
+    sat_data["kpoa_w"], sat_data["poa_extra_w"], _ = \
+        get_kpoa(sat_data.index, lat, long, alt, 25, 270, ghi=sat_data["ghi"])
+
+    return insitu_s, insitu_e, insitu_w, sat_data
 
 
 def load_pvlive_data(start: datetime = pd.to_datetime("20200101").tz_localize("CET"),
@@ -383,56 +446,26 @@ def load_pvlive_data(start: datetime = pd.to_datetime("20200101").tz_localize("C
     insitu, meta = get_pvlive(station=station, start=start, end=end)
     insitu = insitu.tz_convert("CET")
 
-    # Get satelite data
+    # Get satellite data
     lat, long, alt = pvlive_lat_long_alt(station)
     if sat_source == "cams_pvlib":
         sat_data = cams_data_pvlib(lat, long, alt, start, end).tz_convert('CET')
-        sat_data["Ta_C"] = 25
 
-    # Solar position (minute and hourly resolutions)
-    solar_position_1m = get_solar_position_1m(insitu.index, lat, long, alt,
-                                              None, None, pkl=True)
+    # Hourly solar position
+    solar_position = solarpos(sat_data.index, lat, long, alt, None, None)  #
+    solar_position = filter_dates(solar_position, start, end)
 
-    # Calculate angle of incidence/GHI limits for filtering purposes
-    solar_zenith_1m = solar_position_1m["apparent_zenith"].fillna(solar_position_1m["zenith"]).reindex(insitu.index)
-    solar_azimuth_1m = solar_position_1m["azimuth"].reindex(insitu.index)
-    aoi_s = aoi(25, 180, solar_zenith_1m, solar_azimuth_1m).reindex(insitu.index)
-    aoi_e = aoi(25, 90, solar_zenith_1m, solar_azimuth_1m).reindex(insitu.index)
-    aoi_w = aoi(25, 270, solar_zenith_1m, solar_azimuth_1m).reindex(insitu.index)
-    ghi_limit, _, _ = get_irr_limits(insitu.index, lat, long, alt, resample_freq="1min")
-
-    # Get hourly solar position and compensate for the end-of time integration included in the function
-    solar_position = solarpos(sat_data.index, lat, long, alt, None, None).shift(-1).ffill(limit=1)  #
-
-    # Apply filters to Horizontal plane
-    filter_g = (insitu["Gg_pyr"] > 50) & (insitu["flag_Gg_pyr"] == 0) & (insitu["flag_shading"] == 0)
-    df_g = insitu[filter_g & (insitu["flag_T_pyr"] == 0) & (insitu["Gg_pyr"] > ghi_limit["lower"]) & (
-            insitu["Gg_pyr"] < ghi_limit["upper"])]
-    df_15min = df_g.resample("15min").mean()[df_g["flag_Gg_pyr"].resample("15min").count() >= 13]  # 85%
-    insitu_h = df_15min.resample("60min").mean()[df_15min["flag_Gg_pyr"].resample("60min").count() >= 3]  # 75%
-
-    # Apply filters to pyranos
-    def filter_pyrano(filter_g, aoi_s, column_poag="Gg_si_south"):
-        df_s = insitu[filter_g & (aoi_s < 70) & (insitu[column_poag] > 50)]
-        df_s_15min = df_s.resample("15min").mean()[df_s["flag_Gg_pyr"].resample("15min").count() >= 13]  # 85%
-        insitu_s = df_s_15min.resample("60min").mean()[
-            df_s_15min["flag_Gg_pyr"].resample("60min").count() >= 3]  # 75%
-        return insitu_s
-
-    insitu_s = filter_pyrano(filter_g, aoi_s, "Gg_si_south")
-    insitu_e = filter_pyrano(filter_g, aoi_e, "Gg_si_east")
-    insitu_w = filter_pyrano(filter_g, aoi_w, "Gg_si_west")
+    # Apply filters
+    insitu_h, insitu_s, insitu_e, insitu_w = filter_pyrano(insitu, lat, long, alt)
 
     #### Filter on dates
-    def filter_dates(df, start, end):
-        df = df.loc[((df.index) >= start) & ((df.index) < end)]
-        return df
-
     sat_data = filter_dates(sat_data, start, end)
     insitu_h = filter_dates(insitu_h, start, end)
     insitu_s = filter_dates(insitu_s, start, end)
     insitu_e = filter_dates(insitu_e, start, end)
     insitu_w = filter_dates(insitu_w, start, end)
-    solar_position = filter_dates(solar_position, start, end)
+
+    # Add kpoa components
+    insitu_s, insitu_e, insitu_w, sat_data = add_kpoa(insitu_s, insitu_e, insitu_w, sat_data, lat, long, alt)
 
     return sat_data, insitu_h, insitu_s, insitu_e, insitu_w, solar_position
