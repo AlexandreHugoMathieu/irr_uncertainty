@@ -113,3 +113,48 @@ plt.legend()
 
 plt.show()
 
+lat, long = 43.617, 7.05
+lon = long
+alt = 150
+
+start = pd.to_datetime("20220101").tz_localize("CET")
+end = pd.to_datetime("20231201").tz_localize("CET")
+
+sat_data = cams_data_pvlib(lat, long, alt, start, end)
+ghi = sat_data["ghi"]
+poa_qs = poa_scns(lat, long, alt, 25, 180, sat_data["ghi"], quantiles=[0.025, 0.5, 0.975], light=False)
+data_cigs = CIGS_data(start, end)
+# factor = poa_qs[0.5].max() / data_cigs['Gi'].max()
+factor=1
+poa_insitu = (data_cigs['Gi'].tz_convert("CET")*factor)
+
+
+# 1. Identify the 'out of bounds' timesteps
+# Assuming your index is already a DatetimeIndex from our previous step
+poa_insitu = poa_insitu.reindex(poa_qs.index).fillna(0)
+lower = poa_qs[0.025].reindex(poa_insitu.index)
+upper = poa_qs[0.975].reindex(poa_insitu.index)
+mask = ((poa_insitu < lower) | (poa_insitu > upper)) & (sat_data["ghi"].reindex(poa_insitu.index) > 50)
+
+
+# 2. Plotting
+plt.figure(figsize=(12, 6))
+
+# Plot the actual DHI data
+plt.plot(poa_insitu.index, poa_insitu, label='Actual POA', color='black', lw=1, marker=".")
+
+# Plot the quantile boundaries for reference
+plt.fill_between(poa_insitu.index, lower, upper, color='gray', alpha=0.5, label='95% Interval')
+
+# 3. Add red zones for the 'Out of Bounds' timesteps
+# We iterate through the index to find where our mask is True
+out_of_bounds_idx = poa_insitu.index[mask]
+
+for ts in out_of_bounds_idx:
+    plt.axvspan(ts, ts+pd.Timedelta(hours=1), color='red', alpha=0.3)
+
+# Clean up the chart
+plt.title('POA vs 95% Confidence Interval')
+plt.ylabel('POA [W/m²]')
+plt.legend()
+plt.show()

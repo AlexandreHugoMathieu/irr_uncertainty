@@ -7,6 +7,8 @@ from tqdm import tqdm
 from irr_uncertainty.data.irr_data import load_pvlive_data, load_bsrn_data
 from irr_uncertainty.models.irr_limits import get_irr_limits, get_poa_limits
 from irr_uncertainty.models.optic_model import get_kt, get_kpoa
+import contextlib
+import joblib
 
 from irr_uncertainty.data.station_metadata import pvlive_lat_long_alt, bsrn_lat_long_alt
 from irr_uncertainty.models.idr_tools import kpoaq_idr_fc, kdq_idr_fc, ktq_idr_fc, \
@@ -42,6 +44,7 @@ def irrh_scenarios_v2(lat, long, alt,
                       quantiles: list = [0.05, 0.25, 0.5, 0.75, 0.95],
                       light=False,
                       sat_source: str = "cams_pvlib",
+                      n_jobs=-1
                       ) -> pd.DataFrame:
     """
     Generate Monte Carlo simulations to account for irradiance uncertainty on the horizontal plane.
@@ -61,10 +64,9 @@ def irrh_scenarios_v2(lat, long, alt,
     ghi_limit, bhi_limit, dhi_limit = get_irr_limits(ghi.index, lat, long, alt)
     kt_ts, ghi_extra, dni_extra, elevation = get_kt(ghi, lat, long, alt, return_ghiextra_elev=True)
 
-    # TODO: Add years until 2025 included
-    kt_qs = ktq_idr_fc(ghi, lat, long, alt, quantiles, light=light, sat_source=sat_source)
-    kd_qs = kdq_idr_fc(ghi, lat, long, alt, quantiles, light=light, sat_source=sat_source)
-    kb_qs = kbq_idr_fc(ghi, lat, long, alt, quantiles, light=light, sat_source=sat_source)
+    kt_qs = ktq_idr_fc(ghi, lat, long, alt, quantiles, light=light, sat_source=sat_source, n_jobs=n_jobs)
+    kd_qs = kdq_idr_fc(ghi, lat, long, alt, quantiles, light=light, sat_source=sat_source, n_jobs=n_jobs)
+    kb_qs = kbq_idr_fc(ghi, lat, long, alt, quantiles, light=light, sat_source=sat_source, n_jobs=n_jobs)
 
     # Separate indexes
     ghi_qs = pd.DataFrame(data=np.nan, index=ghi.index, columns=quantiles)

@@ -1,10 +1,7 @@
-"""This module analyze CAMS error on BSRN stations"""
-# Created by A. MATHIEU at 09/05/2026
+"""This module gives an overview of the BSRN and PV-live stations"""
 import numpy as np
 import os
 import pandas as pd
-import seaborn as sns
-import scipy
 import matplotlib.pyplot as plt
 import geopandas as gpd
 
@@ -15,11 +12,9 @@ from shapely.geometry import Point
 from tqdm import tqdm
 
 from irr_uncertainty.config import DATA_PATH, Config
-from irr_uncertainty.data.station_metadata import stations_pv_live, pvlive_lat_long_alt, bsrn_lat_long_alt, bsrn_name, stations_bsrn
-from irr_uncertainty.data.irr_data import ghi_dhi_bhi_pvgis_2015, load_bsrn_data, load_pvlive_data
-from irr_uncertainty.models.optic_model import erbs_simple
-from irr_uncertainty.models.uncertainty_config import euro_stations, YEARS
-from irr_uncertainty.models.uncertainty_model import irrh_scenarios_v2
+from irr_uncertainty.data.station_metadata import stations_pv_live, bsrn_lat_long_alt, bsrn_name, stations_bsrn
+from irr_uncertainty.data.irr_data import ghi_dhi_bhi_pvgis_2015, load_bsrn_data
+from irr_uncertainty.models.uncertainty_config import euro_stations, YEARS, START_BSRN, END_BSRN
 from irr_uncertainty.utils import  plot_kt_kt,  calculate_kt_kpis
 
 
@@ -112,72 +107,5 @@ if __name__ == "__main__":
         plt.tight_layout()
         plt.savefig(image_folder / "bsrn_pvlive_cities_kd_2015.png")
 
-    ############## Calculate global error metrics ##############
-    meta_data = pd.DataFrame()
-    error_m = pd.DataFrame(columns=["ghi", "dhi", "bhi", "dni", "kd", "kt"], index=euro_stations, dtype=float)
-    mean_helio = error_m.copy()
-    error_mp = error_m.copy()
-    error_std = error_m.copy()
-    error_rmse = error_m.copy()
-    error_stdp = error_m.copy()
-    error_p_autocorr = error_m.copy()
 
-    step_kt = 0.05
-    step_kd = 0.05
-    kt_range = np.arange(0, 1, step_kt).round(2)
-    kd_range = np.arange(0, 1, step_kd).round(2)
-    kt_moy = pd.Series(dtype=float)
 
-    # If not-predownloaded, it takes approximately 1h-1h30 to download BSRN data
-    for station in tqdm(euro_stations):
-        lat, lon, alt = bsrn_lat_long_alt(station)
-        sat_data, insitu_data, solar_position = load_bsrn_data(START_BSRN, END_BSRN, station, user, password)
-        filter = (insitu_data["ghi"] > 0) & (sat_data["ghi"] > 0) & (np.isin(insitu_data.index.year, YEARS[station]))
-
-        # Collect meta data
-        meta_data.loc[station, "city"] = bsrn_name(station)
-        meta_data.loc[station, ["lat", "long", "alt"]] = lat, lon, alt
-        meta_data.loc[station, ["years", "#"]] = str(YEARS[station]), len(filter[filter])
-
-        for col in ["ghi", "dhi", "bhi", "dni", "kd", "kt"]:
-            error = (insitu_data[col].tz_convert("CET") - sat_data[col].tz_convert("CET")).loc[filter].astype(float)
-
-            mean_helio.loc[station, col] = sat_data.loc[filter, col].mean()
-            error_m.loc[station, col] = error.mean()
-            error_mp.loc[station, col] = error.mean() / sat_data.loc[filter, col].mean()
-            error_std.loc[station, col] = error.std(ddof=0)
-            error_rmse.loc[station, col] = ((error ** 2).mean()) ** (1 / 2)
-            error_stdp.loc[station, col] = error.std(ddof=0) / sat_data.loc[filter, col].mean()
-            error_p_autocorr.loc[station, col] = error.autocorr()
-
-    if plot_bool:
-        print("Error metrics")
-        print((error_m.loc[train_index, :] ** 2).mean() ** (1 / 2))
-        print(error_m[["kd", "kt"]].round(3))
-        print(error_p_autocorr[["kd", "kt"]].round(3))
-        print(error_p_autocorr.loc[train_index].mean().round(2))
-
-        error_m.to_pickle(DATA_PATH / "irr_data" / "error_m.pkl")
-        error_stdp.to_pickle(DATA_PATH / "irr_data" / "error_stdp.pkl")
-
-    ############## Calculate kt-error as function of kt ##############
-    std_kt_kt_less15, std_kt_kt_over15 = calculate_kt_kpis(euro_stations, START_BSRN, END_BSRN, user, password,
-                                                           sat_source="cams_pvlib")
-
-    # get paramaters under and over 15 degrees
-    params_kt_less15 = plot_kt_kt(std_kt_kt_less15.loc[:, train_index], plot_bool=False)
-    params_kt_over15 = plot_kt_kt(std_kt_kt_over15.loc[:, train_index], plot_bool=False)
-
-    if plot_bool:
-        # Seperate into training and test datasets
-        std_kt_kt_train = std_kt_kt_less15.loc[:, train_index]
-        std_kt_kt_test = std_kt_kt_less15.loc[:, test_index]
-
-        params = plot_kt_kt(std_kt_kt_train, 13)
-        print(np.array(params).round(4))
-        plt.savefig(image_folder / "kt_kt_less15.png")
-
-        std_kt_kt_train = std_kt_kt_over15.loc[:, train_index]
-        params = plot_kt_kt(std_kt_kt_train, 13)
-        print(np.array(params).round(4))
-        plt.savefig(image_folder / "kt_kt_over15.png")

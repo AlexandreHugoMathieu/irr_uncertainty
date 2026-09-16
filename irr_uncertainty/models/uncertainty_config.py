@@ -9,9 +9,6 @@ UNCERT_PATH = DATA_PATH / "uncertainty"
 
 START_BSRN = pd.to_datetime("20050101").tz_localize("CET")
 END_BSRN = pd.to_datetime("20260101").tz_localize("CET")
-END_BSRN = pd.to_datetime("20230101").tz_localize("CET")
-
-#TODO: extend to 2026 and add lmp
 
 meta_stations = stations_bsrn()
 
@@ -26,29 +23,29 @@ euro_stations = sorted(euro_stations)
 #### Remove some stations
 # son: peculiar local conditions (snowy-4000m location)
 # MRS: no BHI
-# LMP: not enough data
-euro_stations = [st for st in euro_stations if (st != "son") & (st != "mrs") & (st != "lmp")]
+euro_stations = [st for st in euro_stations if (st != "son") & (st != "mrs")]
 
 # Arbitrary selected based on missing data
-YEARS = {"bud": [2020, 2021, 2022],
-         "cab": list(range(2005, 2023)),
+YEARS = {"bud": list(range(2020, 2026)),
+         "cab": list(range(2005, 2026)),
          "cam": [2005, 2007, 2009, 2013, 2014],
          "car": list(range(2005, 2011)) + (list(range(2012, 2019))),
-         "cnr": list(range(2011, 2015)) + (list(range(2016, 2023))),
-         "lin": list(range(2006, 2023)),
-         # "lmp": list(range(2021, 2026)),
-         "pal": list(range(2008, 2012)) + (list(range(2013, 2023))),
-         "pay": [2009] + (list(range(2013, 2023))),
+         "cnr": list(range(2011, 2015)) + (list(range(2016, 2026))),
+         "lin": list(range(2006, 2026)),
+         "lmp": list(range(2024, 2023)),
+         "pal": list(range(2008, 2012)) + (list(range(2014, 2026))),
+         "pay": [2009] + (list(range(2012, 2026))),
          "tor": list(range(2006, 2022)),
          }
 
 # Arbitrary selected based on missing data
-YEARS_5y = {"bud": [2020, 2021, 2022],
+YEARS_light = {"bud": [2020, 2021, 2022],
             "cab": list(range(2018, 2023)),
             "cam": [2005, 2007, 2009, 2013, 2014],
             "car": (list(range(2014, 2019))),
             "cnr": (list(range(2018, 2023))),
             "lin": list(range(2018, 2023)),
+            "lmp": list(range(2024, 2026)),
             "pal": list(range(2008, 2012)) + (list(range(2013, 2023))),
             "pay": [2009] + (list(range(2013, 2023))),
             "tor": list(range(2006, 2022)),

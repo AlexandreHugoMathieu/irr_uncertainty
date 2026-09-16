@@ -3,11 +3,15 @@ import numpy as np
 import os
 import pandas as pd
 
+
+
 from isodisreg import idr
+from joblib import Parallel, delayed
 from tqdm import tqdm
 from isodisreg.modeling_evaluation import idrobject
 from scipy.stats import norm
 from scipy.optimize import brentq
+from scipy.special import ndtr
 from statsmodels.nonparametric.bandwidths import bw_silverman
 
 from irr_uncertainty.config import Config, DATA_PATH
@@ -15,7 +19,7 @@ from irr_uncertainty.data.irr_data import load_pvlive_data, load_bsrn_welev
 from irr_uncertainty.data.station_metadata import pvlive_lat_long_alt
 from irr_uncertainty.data.station_metadata import stations_pv_live
 from irr_uncertainty.models.optic_model import get_kt, get_kpoa, erbs_simple
-from irr_uncertainty.models.uncertainty_config import euro_stations, START_BSRN, END_BSRN, YEARS, YEARS_5y
+from irr_uncertainty.models.uncertainty_config import euro_stations, START_BSRN, END_BSRN, YEARS, YEARS_light
 
 
 def get_idr_path(elev, indice, light=False, sat_source="cams_pvlib"):
@@ -148,7 +152,7 @@ def kt_idr_fit(
             # Filters
             filter = (ghi_insitu > 0) & (ghi_sat > 0) & (~kt_insitu.isna())
             if light:
-                filter = filter & (np.isin(insitu_data.index.year, YEARS_5y[station]))
+                filter = filter & (np.isin(insitu_data.index.year, YEARS_light[station]))
             else:
                 filter = filter & (np.isin(insitu_data.index.year, YEARS[station]))
 
@@ -210,7 +214,7 @@ def kd_idr_fit(
             # Positive filters
             filter = (ghi_insitu > 0) & (ghi_sat > 0) & (~kd_insitu.isna())
             if light:
-                filter = filter & (np.isin(insitu_data.index.year, YEARS_5y[station]))
+                filter = filter & (np.isin(insitu_data.index.year, YEARS_light[station]))
             else:
                 filter = filter & (np.isin(insitu_data.index.year, YEARS[station]))
 
@@ -272,7 +276,7 @@ def kb_idr_fit(
             # Positive filters
             filter = (ghi_insitu > 0) & (ghi_sat > 0) & (~kb_insitu.isna())
             if light:
-                filter = filter & (np.isin(insitu_data.index.year, YEARS_5y[station]))
+                filter = filter & (np.isin(insitu_data.index.year, YEARS_light[station]))
             else:
                 filter = filter & (np.isin(insitu_data.index.year, YEARS[station]))
 
@@ -372,21 +376,24 @@ def kpoa_idr_fit(
 
 
 class IDRSmooth:
-    def __init__(self, data: np.array):
-        self.data = np.asarray(data)
-        self.h = bw_silverman(self.data) if len(self.data) > 1 else self.data[0]
+    def __init__(self, predictions: np.array):
+        self.p_ranges = []
+        self.x_ranges = []
+        for p in predictions:
+            data = np.asarray(p.points)
+            h = bw_silverman(data) if len(data) > 1 else data[0]
 
-        # Pre-compute the Quantile Grid for Linear Interpolation
-        x_range = np.linspace(self.data.min() - 3 * self.h, self.data.max() + 3 * self.h, 100)
-        p_range = self.cdf(x_range)
-        self.p_range = p_range
-        self.x_range = x_range
+            # Pre-compute the Quantile Grid for Linear Interpolation
+            x_range = np.linspace(data.min() - 3 * h, data.max() + 3 * h, 100)
+            p_range = self.cdf(x_range, data, h)
+            self.p_ranges.append(p_range)
+            self.x_ranges.append(x_range)
 
-    def cdf(self, x):
+    def cdf(self, x, data, h):
         """Calcule P(X <= x)"""
         x = np.atleast_1d(x)
-        z = (x[:, np.newaxis] - self.data) / self.h
-        weights = np.ones(len(self.data)) / len(self.data)
+        z = (x[:, np.newaxis] - data) / h
+        weights = np.ones(len(data)) / len(data)
         return np.sum(weights * norm.cdf(z), axis=1)
 
     def _compute_exact_ppf(self, q_values):
@@ -401,12 +408,17 @@ class IDRSmooth:
         return np.array(res)
 
     def ppf(self, q):
-        #  Backwards interpolation
-        return np.interp(q, self.p_range, self.x_range)
+        qs = []
+        for i in range(len(self.p_ranges)):
+            #  Backwards interpolation
+            q = np.interp(q, self.p_ranges[i], self.x_ranges[i])
+            qs.append(q)
+        return qs
 
-    def sample(self, n_samples=1):
-        indices = np.random.choice(len(self.data), size=n_samples, p=self.weights)
-        return self.data[indices] + np.random.normal(0, self.h, size=n_samples)
+    def sample(self, data, h, n_samples=1):
+        weights = np.ones(len(data)) / len(data)
+        indices = np.random.choice(len(data), size=n_samples, p=weights)
+        return self.data[indices] + np.random.normal(0, h, size=n_samples)
 
 
 def elev_dicts(all_elevs, elev_step):
@@ -427,80 +439,104 @@ def aoi_dicts(all_aois, aoi_step):
     return aoi_bool
 
 
-def idr_fc(elevs, elev_step, elev_bool, elevation, path_elevs, kt_ts, quantiles, k_indice: str):
+def process_single_item(data, quantiles):
+    data = np.asarray(data)
+    h = bw_silverman(data) if len(data) > 1 else data[0]
+
+    # Safety check to prevent division by zero or NaN bandwidths
+    if h == 0 or np.isnan(h):
+        h = 1e-5
+
+    x_range = np.linspace(data.min() - 3 * h, data.max() + 3 * h, 100)
+    z = (x_range[:, np.newaxis] - data) / h
+    p_range = np.mean(ndtr(z), axis=1)
+
+    # Backwards interpolation
+    return np.interp(quantiles, p_range, x_range)
+
+def idr_fc(elevs, elev_step, elev_bool, elevation, path_elevs, kt_ts, quantiles, k_indice: str, n_jobs=-1):
     # disable garbage collector (to go faster)
     gc.disable()
     fc_array_list = []
-    for elev in tqdm(elevs, desc=f"{k_indice} IDR inference"):
-        if elev_bool[elev]:
-            # Filter on the cases
-            filter = (elevation >= elev) & (elevation < (elev + elev_step))
-            ts_filter = kt_ts.loc[filter]
+    valid_elevs = [elev  for elev in elevs if elev_bool[elev]]
+    all_data = []
+    all_idx = []
+    for elev in tqdm(valid_elevs, desc=f"{k_indice} IDR inference"):
+        # Filter on the cases
+        filter = (elevation >= elev) & (elevation < (elev + elev_step))
+        ts_filter = kt_ts.loc[filter]
 
-            # Import and predict the IDR
-            path = path_elevs[elev]
-            fitted_idr = npz_idr_load(path)
-            fcs = fitted_idr.predict(pd.DataFrame(ts_filter.values))
-            del fitted_idr  # Remove space
+        # Import and predict the IDR
+        path = path_elevs[elev]
+        fitted_idr = npz_idr_load(path)
+        fcs = fitted_idr.predict(pd.DataFrame(ts_filter.values))
+        datas = fcs.predictions
+        del fitted_idr, fcs  # Free up some space
 
-            # Compute quantiles point per point
-            fc_array = np.zeros((len(ts_filter.index), len(quantiles)))
-            for i, fc in enumerate(fcs.predictions):
-                sd = IDRSmooth(data=fc.points)
-                q_values = sd.ppf(quantiles)
-                fc_array[i] = q_values
+        # # Compute quantiles for all points
+        all_idx.extend(ts_filter.index)
 
-            fc_array_list += [pd.DataFrame(fc_array, index=ts_filter.index, columns=quantiles)]
+        # for p in fcs.predictions:
+        fc_datas = [np.asarray(p.points) for p in datas]
+        all_data.extend(fc_datas)
 
     # enable garbage collector again
     gc.enable()
 
+    # Run the loop in parallel across all CPU cores
+    q_ranges = Parallel(n_jobs=n_jobs)(
+        delayed(process_single_item)(data, quantiles)
+        for data in tqdm(all_data, desc="Computing quantiles")
+    )
+    # Convert to a final NumPy array if desired
+    q_ranges = np.array(q_ranges)
+
     if len(fc_array_list)>0:
-        fc_q = pd.concat(fc_array_list)
+        fc_q = pd.DataFrame(data=q_ranges, index=all_idx)
         fc_q = fc_q.sort_index()
     else:
         fc_q = pd.DataFrame(columns=quantiles)
 
     return fc_q
-
-def idrpoa_fc(elevs, aois, elev_step, aoi_step, dict_bool, elevation, aoi_ts, paths, kt_ts, quantiles, k_indice: str):
-    # disable garbage collector (to go faster)
-    gc.disable()
-    fc_array_list = []
-    for elev in tqdm(elevs, desc=f"{k_indice} IDR inference"):
-        for aoi_i in aois:
-            if dict_bool[elev][aoi_i]:
-                # Filter on the cases
-                filter = (elevation >= elev) & (elevation < (elev + elev_step))
-                filter = filter & (aoi_ts >= aoi_i) & (aoi_ts < (aoi_i + aoi_step))
-                ts_filter = kt_ts.loc[filter]
-
-                # Import and predict the IDR
-                path = paths[elev][aoi_i]
-                fitted_idr = npz_idr_load(path)
-                fcs = fitted_idr.predict(pd.DataFrame(ts_filter.values))
-                del fitted_idr  # Remove space
-
-                # Compute quantiles point per point
-                fc_array = np.zeros((len(ts_filter.index), len(quantiles)))
-                for i, fc in enumerate(fcs.predictions):
-                    sd = IDRSmooth(data=fc.points)
-                    q_values = sd.ppf(quantiles)
-                    fc_array[i] = q_values
-
-                fc_array_list += [pd.DataFrame(fc_array, index=ts_filter.index, columns=quantiles)]
-
-    # enable garbage collector again
-    gc.enable()
-
-    fc_q = pd.concat(fc_array_list)
-    fc_q = fc_q.sort_index()
-
-
-    return fc_q
+#
+# def idrpoa_fc(elevs, aois, elev_step, aoi_step, dict_bool, elevation, aoi_ts, paths, kt_ts, quantiles, k_indice: str, n_jobs=-1):
+#     # disable garbage collector (to go faster)
+#     gc.disable()
+#     fc_array_list = []
+#     for elev in tqdm(elevs, desc=f"{k_indice} IDR inference"):
+#         for aoi_i in aois:
+#             if dict_bool[elev][aoi_i]:
+#                 # Filter on the cases
+#                 filter = (elevation >= elev) & (elevation < (elev + elev_step))
+#                 filter = filter & (aoi_ts >= aoi_i) & (aoi_ts < (aoi_i + aoi_step))
+#                 ts_filter = kt_ts.loc[filter]
+#
+#                 # Import and predict the IDR
+#                 path = paths[elev][aoi_i]
+#                 fitted_idr = npz_idr_load(path)
+#                 fcs = fitted_idr.predict(pd.DataFrame(ts_filter.values))
+#                 del fitted_idr  # Remove space
+#
+#                 # Compute quantiles point per point
+#                 results = Parallel(n_jobs=n_jobs)(
+#                     delayed(compute_quantiles)(fc, quantiles)
+#                     for fc in fcs.predictions
+#                 )
+#                 fc_array = np.array(results)
+#
+#                 fc_array_list += [pd.DataFrame(fc_array, index=ts_filter.index, columns=quantiles)]
+#
+#     # enable garbage collector again
+#     gc.enable()
+#
+#     fc_q = pd.concat(fc_array_list)
+#     fc_q = fc_q.sort_index()
+#
+#
+#     return fc_q
 
 def ktq_idr_fc(ghi, lat, lon, alt, quantiles=[0.05, 0.25, 0.5, 0.75, 0.95], elev_step=5, light=False,
-               sat_source="cams_pvlib"):
+               sat_source="cams_pvlib", n_jobs=-1):
     # Fit
     _ = kt_idr_fit(elev_step=elev_step, light=light, sat_source=sat_source)
 
@@ -514,13 +550,13 @@ def ktq_idr_fc(ghi, lat, lon, alt, quantiles=[0.05, 0.25, 0.5, 0.75, 0.95], elev
     path_elevs = {elev: get_idr_path(elev, "kt", light, sat_source) for elev in elevs}
 
     # Forecast
-    kt_scns = idr_fc(elevs, elev_step, elev_bool, elevation, path_elevs, kt_ts, quantiles, "kt")
+    kt_scns = idr_fc(elevs, elev_step, elev_bool, elevation, path_elevs, kt_ts, quantiles, "kt", n_jobs=n_jobs)
 
     return kt_scns.clip(lower=0)
 
 
 def kdq_idr_fc(ghi, lat, lon, alt, quantiles=[0.05, 0.25, 0.5, 0.75, 0.95], elev_step=5, light=False,
-               sat_source="cams_pvlib"):
+               sat_source="cams_pvlib", n_jobs=-1):
     # Fit
     _ = kd_idr_fit(elev_step=elev_step, light=light, sat_source=sat_source)
 
@@ -535,13 +571,13 @@ def kdq_idr_fc(ghi, lat, lon, alt, quantiles=[0.05, 0.25, 0.5, 0.75, 0.95], elev
     path_elevs = {elev: get_idr_path(elev, "kd", light, sat_source) for elev in elevs}
 
     # Forecast
-    kd_scns = idr_fc(elevs, elev_step, elev_bool, elevation, path_elevs, kd_ts, quantiles, "kd")
+    kd_scns = idr_fc(elevs, elev_step, elev_bool, elevation, path_elevs, kd_ts, quantiles, "kd", n_jobs=n_jobs)
 
     return kd_scns.clip(lower=0)
 
 
 def kbq_idr_fc(ghi, lat, lon, alt, quantiles=[0.05, 0.25, 0.5, 0.75, 0.95], elev_step=5, light=False,
-               sat_source="cams_pvlib"):
+               sat_source="cams_pvlib", n_jobs=-1):
     # Fit
     _ = kb_idr_fit(elev_step=elev_step, light=light, sat_source=sat_source)
 
@@ -556,14 +592,14 @@ def kbq_idr_fc(ghi, lat, lon, alt, quantiles=[0.05, 0.25, 0.5, 0.75, 0.95], elev
     path_elevs = {elev: get_idr_path(elev, "kb", light, sat_source) for elev in elevs}
 
     # Forecast
-    kb_scns = idr_fc(elevs, elev_step, elev_bool, elevation, path_elevs, kb_ts, quantiles, "kb")
+    kb_scns = idr_fc(elevs, elev_step, elev_bool, elevation, path_elevs, kb_ts, quantiles, "kb", n_jobs=n_jobs)
 
     return kb_scns.clip(lower=0)
 
 
 def kpoaq_idr_fc(ghi, lat, lon, alt, tilt, surface_azimuth,
                  quantiles=[0.05, 0.25, 0.5, 0.75, 0.95], aoi_step=5, elev_step=5, light=False,
-                 sat_source="cams_pvlib"):
+                 sat_source="cams_pvlib", n_jobs=-1):
     # Fit
     # _ = kpoa_idr_fit(aoi_step=aoi_step, elev_step=elev_step, light=light, sat_source=sat_source)
 
@@ -589,11 +625,10 @@ def kpoaq_idr_fc(ghi, lat, lon, alt, tilt, surface_azimuth,
         kpoa_ts_aoi = kpoa_ts.loc[filter]
 
         kpoa_qs_elev = idr_fc(elevs, elev_step, elev_bool, elevation, path_elevs, kpoa_ts_aoi, quantiles,
-                              f"kpoa_{round(aoi_i, 2)}")
+                              f"kpoa_{round(aoi_i, 2)}", n_jobs=n_jobs)
         kpoa_list += [kpoa_qs_elev]
 
     kpoa_qs = pd.concat(kpoa_list)
     kpoa_qs = kpoa_qs.sort_index().reindex(ghi.index).fillna(0).clip(lower=0)
-
 
     return kpoa_qs
